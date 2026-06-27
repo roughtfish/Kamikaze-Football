@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kamikaze Football · PL Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#080d18; --panel:#101a2c; --panel-2:#16223a; --raised:#1d2c49;
+    --line:#283a5c; --line-soft:#1c2a44;
+    --ink:#eaf1fb; --muted:#8ea0c0; --faint:#5e7095;
+    --go:#19e2a0;        /* alive / win */
+    --go-dim:#0e7d5c;
+    --warn:#ffc043;      /* low lives */
+    --danger:#ff5b7e;    /* loss / out */
+    --pitch:#2a3d5e;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 12px 30px -18px rgba(0,0,0,.8);
+    --disp:'Barlow Condensed', system-ui, sans-serif;
+    --body:'Barlow', system-ui, -apple-system, sans-serif;
+    --num:ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1200px 500px at 50% -200px, rgba(25,226,160,.07), transparent 60%),
+      var(--bg);
+    color:var(--ink); font-family:var(--body); font-size:15px; line-height:1.45;
+    -webkit-font-smoothing:antialiased; padding-bottom:64px;
+  }
+  .wrap{max-width:1100px; margin:0 auto; padding:0 16px}
+
+  /* ---- Masthead ---- */
+  header.top{
+    border-bottom:1px solid var(--line-soft);
+    background:linear-gradient(180deg, rgba(16,26,44,.9), rgba(8,13,24,.4));
+    position:sticky; top:0; z-index:30; backdrop-filter:blur(8px);
+  }
+  .mast{display:flex; align-items:center; gap:14px; padding:12px 0}
+  .crest{width:38px;height:38px;flex:0 0 auto;filter:drop-shadow(0 0 10px rgba(25,226,160,.3))}
+  .title h1{
+    font-family:var(--disp); font-weight:700; letter-spacing:.04em;
+    margin:0; font-size:23px; line-height:1; text-transform:uppercase;
+  }
+  .title h1 .k{color:var(--go)}
+  .title .sub{font-size:12px; color:var(--muted); letter-spacing:.14em; text-transform:uppercase; margin-top:3px}
+  .mast .spacer{flex:1}
+  .chip{
+    font-family:var(--disp); text-transform:uppercase; letter-spacing:.06em;
+    font-size:12px; padding:5px 10px; border-radius:999px; border:1px solid var(--line);
+    color:var(--muted); display:inline-flex; align-items:center; gap:7px; white-space:nowrap;
+  }
+  .chip .dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+  .chip.live .dot{background:var(--go); box-shadow:0 0 8px var(--go)}
+  .chip.local .dot{background:var(--warn)}
+
+  /* ---- GW bar ---- */
+  .gwbar{display:flex; align-items:center; gap:10px; padding:12px 0 4px}
+  .gwbar .lab{font-family:var(--disp);text-transform:uppercase;letter-spacing:.12em;color:var(--faint);font-size:12px}
+  .gwstep{
+    display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);
+    border-radius:10px;overflow:hidden;background:var(--panel)
+  }
+  .gwstep button{
+    background:none;border:0;color:var(--ink);font-family:var(--num);font-size:15px;
+    padding:6px 12px;cursor:pointer
+  }
+  .gwstep button:hover{background:var(--raised)}
+  .gwstep .gwnum{font-family:var(--disp);font-weight:700;font-size:20px;min-width:46px;text-align:center;padding:2px 6px}
+  .gwstate{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-family:var(--disp)}
+  .gwstate b{color:var(--go)}
+
+  /* ---- Tabs ---- */
+  nav.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line-soft);margin-top:10px;overflow-x:auto}
+  nav.tabs button{
+    background:none;border:0;color:var(--muted);font-family:var(--disp);
+    text-transform:uppercase;letter-spacing:.06em;font-size:15px;font-weight:600;
+    padding:11px 14px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap
+  }
+  nav.tabs button:hover{color:var(--ink)}
+  nav.tabs button.on{color:var(--ink);border-bottom-color:var(--go)}
+
+  main{padding-top:18px}
+  .panel{background:var(--panel);border:1px solid var(--line-soft);border-radius:14px;box-shadow:var(--shadow)}
+  .panel + .panel{margin-top:16px}
+  .phead{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-soft)}
+  .phead h2{font-family:var(--disp);text-transform:uppercase;letter-spacing:.05em;font-size:16px;margin:0}
+  .phead .hint{font-size:12.5px;color:var(--muted);margin-left:auto}
+
+  /* ---- Standings ---- */
+  .board{padding:6px 8px 12px}
+  .row{
+    display:grid;grid-template-columns:30px 1fr 150px 92px 70px;align-items:center;
+    gap:10px;padding:9px 10px;border-radius:10px
+  }
+  .row.head{color:var(--faint);font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;font-size:11.5px;padding-bottom:4px}
+  .row.mgr:hover{background:var(--panel-2)}
+  .row.mgr + .row.mgr{border-top:1px solid var(--line-soft)}
+  .rank{font-family:var(--disp);font-weight:700;font-size:18px;color:var(--faint);text-align:center}
+  .rank.lead{color:var(--go)}
+  .who{display:flex;align-items:center;gap:9px;min-width:0}
+  .who .nm{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cards{display:flex;gap:4px}
+  .cardpip{
+    font-family:var(--disp);font-size:10px;font-weight:700;width:17px;height:17px;border-radius:4px;
+    display:grid;place-items:center;cursor:pointer;border:1px solid var(--line);color:var(--faint);user-select:none
+  }
+  .cardpip.avail{border-color:var(--go-dim);color:var(--go);background:rgba(25,226,160,.08)}
+  .cardpip.used{opacity:.45;text-decoration:line-through}
+  .cardpip:hover{border-color:var(--ink)}
+  .lives{display:flex;align-items:center;gap:8px}
+  .pips{display:flex;gap:2px;flex-wrap:nowrap}
+  .pip{width:6px;height:16px;border-radius:2px;background:var(--line)}
+  .pip.on{background:var(--go)}
+  .pip.warn{background:var(--warn)}
+  .pip.danger{background:var(--danger)}
+  .lifenum{font-family:var(--num);font-size:17px;min-width:26px;text-align:right;font-weight:600}
+  .lifenum.warn{color:var(--warn)} .lifenum.danger{color:var(--danger)} .lifenum.go{color:var(--go)}
+  .wdl{font-family:var(--num);font-size:13px;color:var(--muted);letter-spacing:.02em;text-align:center}
+  .wdl b{color:var(--ink)}
+  .bans{font-family:var(--num);font-size:13px;color:var(--faint);text-align:center}
+  .row.out{opacity:.5}
+  .row.out .nm{text-decoration:line-through}
+  .outtag{font-family:var(--disp);font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--danger);
+    border:1px solid var(--danger);border-radius:4px;padding:1px 5px;text-transform:uppercase}
+  .sep{display:flex;align-items:center;gap:10px;color:var(--faint);font-family:var(--disp);
+    text-transform:uppercase;letter-spacing:.1em;font-size:11px;padding:14px 12px 6px}
+  .sep::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+
+  /* ---- generic ---- */
+  table.grid{width:100%;border-collapse:collapse}
+  table.grid th,table.grid td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line-soft);font-size:14px}
+  table.grid th{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-size:12px;font-weight:600}
+  table.grid td.num,table.grid th.num{text-align:center;font-family:var(--num)}
+  select,input[type=text]{
+    background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:8px;
+    padding:7px 9px;font-family:var(--body);font-size:14px;width:100%
+  }
+  select:focus,input:focus{outline:2px solid var(--go-dim);outline-offset:0}
+  select:disabled{opacity:.5}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{background:var(--panel-2);border:0;color:var(--muted);font-family:var(--disp);font-weight:600;
+    font-size:13px;text-transform:uppercase;letter-spacing:.04em;padding:6px 11px;cursor:pointer}
+  .seg button + button{border-left:1px solid var(--line)}
+  .seg button.on{color:var(--bg)}
+  .seg button.on.H{background:var(--go)} .seg button.on.D{background:var(--warn)} .seg button.on.A{background:var(--danger)}
+  .ck{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
+  .ck input{accent-color:var(--go)}
+  .btn{
+    font-family:var(--disp);text-transform:uppercase;letter-spacing:.05em;font-weight:600;font-size:14px;
+    background:var(--go);color:#04130d;border:0;border-radius:9px;padding:10px 18px;cursor:pointer
+  }
+  .btn:hover{filter:brightness(1.07)}
+  .btn.ghost{background:none;border:1px solid var(--line);color:var(--ink)}
+  .btn.ghost:hover{border-color:var(--ink);background:var(--panel-2)}
+  .btn.warn{background:var(--warn);color:#1a1300}
+  .btn:disabled{opacity:.4;cursor:not-allowed;filter:none}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:13px 16px;border-top:1px solid var(--line-soft)}
+  .toolbar .spacer{flex:1}
+  .note{font-size:12.5px;color:var(--muted)}
+  .empty{padding:34px 16px;text-align:center;color:var(--muted)}
+  .empty .big{font-family:var(--disp);font-size:18px;color:var(--ink);text-transform:uppercase;letter-spacing:.04em}
+  .pickrow{display:grid;grid-template-columns:1fr 1.6fr auto;gap:10px;align-items:center;padding:9px 16px;border-bottom:1px solid var(--line-soft)}
+  .pickrow .nm{font-weight:600}
+  .pickrow .opts{display:flex;gap:12px;align-items:center}
+  .warnbox{margin:0;padding:11px 16px;background:rgba(255,91,126,.08);border:1px solid rgba(255,91,126,.3);
+    border-radius:10px;color:#ffc2cf;font-size:13.5px}
+  .okbox{margin:0;padding:11px 16px;background:rgba(25,226,160,.08);border:1px solid rgba(25,226,160,.3);
+    border-radius:10px;color:#bdf6e3;font-size:13.5px}
+  .fixrow{display:grid;grid-template-columns:1fr auto 1fr auto;gap:10px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line-soft)}
+  .fixrow .v{color:var(--faint);font-family:var(--disp);text-align:center}
+  .strength{font-family:var(--num);font-size:11px;color:var(--faint)}
+  .banlist{font-size:13px;color:var(--muted)}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--raised);
+    border:1px solid var(--line);color:var(--ink);padding:11px 18px;border-radius:10px;box-shadow:var(--shadow);
+    font-size:14px;z-index:60;opacity:0;transition:opacity .2s, transform .2s;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  @media (max-width:680px){
+    .row{grid-template-columns:24px 1fr 64px;gap:8px}
+    .row .lives .pips{display:none}
+    .row .wdl,.row .bans,.row.head .h-wdl,.row.head .h-bans{display:none}
+    .pickrow{grid-template-columns:1fr;gap:7px}
+    .fixrow{grid-template-columns:1fr auto 1fr;}
+    .fixrow .seg{grid-column:1/-1}
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap mast">
+    <svg class="crest" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <path d="M32 4c4 9 13 9 22 11-6 7-4 17-9 25-4 6-9 11-13 19-4-8-9-13-13-19-5-8-3-18-9-25 9-2 18-2 22-11z" stroke="#19e2a0" stroke-width="2.4" stroke-linejoin="round"/>
+      <circle cx="32" cy="30" r="7.5" fill="#0b1626" stroke="#eaf1fb" stroke-width="2"/>
+      <path d="M32 23.5l2.4 1.8-.9 2.9h-3l-.9-2.9z" fill="#eaf1fb"/>
+    </svg>
+    <div class="title">
+      <h1><span class="k">Kamikaze</span> Football</h1>
+      <div class="sub">Premier League · Survival</div>
+    </div>
+    <div class="spacer"></div>
+    <span id="dataChip" class="chip local"><span class="dot"></span><span id="dataChipText">Local data</span></span>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="gwbar">
+    <span class="lab">Gameweek</span>
+    <div class="gwstep">
+      <button id="gwDown" title="Previous">‹</button>
+      <span class="gwnum" id="gwNum">30</span>
+      <button id="gwUp" title="Next">›</button>
+    </div>
+    <span class="gwstate" id="gwState"></span>
+    <div class="spacer" style="flex:1"></div>
+    <span class="chip" id="aliveChip"><span class="dot" style="background:var(--go)"></span><span id="aliveCount">—</span> alive</span>
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="standings" class="on">Standings</button>
+    <button data-tab="picks">Enter picks</button>
+    <button data-tab="resolve">Resolve</button>
+    <button data-tab="limits">Squad limits</button>
+  </nav>
+</div>
+
+<main class="wrap" id="view"></main>
+
+<div class="toast" id="toast"></div>
+
+<!-- ============ SEED (real league state through GW29) ============ -->
+<script id="seed" type="application/json">
+{"season":"25/26","startingLives":15,"maxPicksPerTeam":2,"currentGw":30,"teams":[{"name":"Arsenal","strength":20},{"name":"Bournemouth","strength":19},{"name":"Spurs","strength":18},{"name":"Sunderland","strength":17},{"name":"Man City","strength":16},{"name":"Man Utd","strength":15},{"name":"Liverpool","strength":14},{"name":"Aston Villa","strength":13},{"name":"Chelsea","strength":12},{"name":"Crystal Palace","strength":11},{"name":"Brentford","strength":10},{"name":"Newcastle","strength":9},{"name":"Brighton","strength":8},{"name":"Everton","strength":7},{"name":"Leeds","strength":6},{"name":"Burnley","strength":5},{"name":"Fulham","strength":4},{"name":"Notts Forest","strength":3},{"name":"West Ham","strength":2},{"name":"Wolves","strength":1}],"managers":[{"name":"Mark","lives":0,"wins":18,"draws":7,"losses":4,"eliminated":false,"wildcardUsed":true,"drawcardUsed":true,"used":{"Notts Forest":2,"Arsenal":2,"Chelsea":2,"Crystal Palace":2,"Fulham":2,"Man City":1,"Sunderland":1,"Newcastle":2,"Brighton":2,"Liverpool":1,"Everton":2,"Bournemouth":1,"Man Utd":1,"Brentford":2,"Leeds":2,"Wolves":1,"West Ham":1}},{"name":"Sam","lives":0,"wins":17,"draws":6,"losses":5,"eliminated":false,"wildcardUsed":true,"drawcardUsed":true,"used":{"Sunderland":2,"Aston Villa":2,"Notts Forest":2,"Crystal Palace":2,"Man City":2,"Arsenal":2,"Newcastle":2,"Chelsea":2,"Everton":2,"Man Utd":2,"Bournemouth":1,"Liverpool":2,"Brighton":1,"Spurs":1,"West Ham":1}},{"name":"Andy","lives":0,"wins":19,"draws":5,"losses":5,"eliminated":false,"wildcardUsed":false,"drawcardUsed":false,"used":{"Brighton":2,"Burnley":1,"Notts Forest":1,"Everton":2,"Crystal Palace":1,"Bournemouth":1,"Sunderland":1,"Leeds":1,"Chelsea":1,"Man City":2,"Aston Villa":1,"Man Utd":2,"Arsenal":1,"Liverpool":2,"West Ham":1}},{"name":"Ollie","lives":0,"wins":17,"draws":9,"losses":3,"eliminated":false,"wildcardUsed":false,"drawcardUsed":true,"used":{"Leeds":2,"Bournemouth":2,"Notts Forest":1,"Everton":2,"Sunderland":2,"Newcastle":2,"Chelsea":2,"Man Utd":2,"Aston Villa":2,"Man City":2,"Liverpool":2,"Brighton":1,"Arsenal":1,"Spurs":1}},{"name":"Giles","lives":0,"wins":17,"draws":9,"losses":3,"eliminated":false,"wildcardUsed":true,"drawcardUsed":true,"used":{"Spurs":1,"Arsenal":2,"Chelsea":2,"Liverpool":2,"Man City":2,"Aston Villa":2,"Brighton":2,"Notts Forest":2,"Bournemouth":2,"Newcastle":2,"Brentford":2,"Everton":2,"Man Utd":2,"Sunderland":1,"Crystal Palace":1,"Fulham":1,"Leeds":1}},{"name":"Bod","lives":1,"wins":19,"draws":6,"losses":4,"eliminated":false,"wildcardUsed":true,"drawcardUsed":true,"used":{"West Ham":2,"Bournemouth":2,"Notts Forest":2,"Newcastle":2,"Wolves":1,"Man City":2,"Burnley":2,"Chelsea":2,"Brighton":2,"Aston Villa":2,"Man Utd":2,"Arsenal":2,"Liverpool":2,"Brentford":2,"Crystal Palace":1,"Everton":1}},{"name":"Chelsi","lives":0,"wins":19,"draws":5,"losses":5,"eliminated":false,"wildcardUsed":false,"drawcardUsed":true,"used":{"West Ham":1,"Bournemouth":2,"Notts Forest":1,"Fulham":1,"Crystal Palace":1,"Man City":2,"Brighton":2,"Chelsea":2,"Newcastle":2,"Man Utd":2,"Aston Villa":2,"Arsenal":1,"Liverpool":1,"Sunderland":1,"Spurs":1}},{"name":"Steph","lives":0,"wins":17,"draws":9,"losses":3,"eliminated":false,"wildcardUsed":true,"drawcardUsed":false,"used":{"Notts Forest":2,"Bournemouth":2,"Everton":2,"Man City":2,"Brighton":2,"Brentford":2,"Chelsea":2,"Sunderland":1,"Liverpool":2,"Newcastle":1,"Arsenal":2,"Leeds":2,"Spurs":1,"Crystal Palace":1}},{"name":"Aimee","lives":0,"wins":19,"draws":5,"losses":5,"eliminated":false,"wildcardUsed":true,"drawcardUsed":false,"used":{"West Ham":1,"Crystal Palace":1,"Leeds":1,"Chelsea":2,"Fulham":1,"Sunderland":2,"Arsenal":2,"Wolves":1,"Man Utd":1,"Brentford":1,"Spurs":1,"Everton":1,"Aston Villa":1,"Bournemouth":1}},{"name":"Mark Reed","lives":0,"wins":17,"draws":9,"losses":3,"eliminated":false,"wildcardUsed":false,"drawcardUsed":true,"used":{"Spurs":2,"Bournemouth":2,"Notts Forest":2,"Crystal Palace":1,"Man City":2,"Brighton":2,"Sunderland":1,"Leeds":1,"Arsenal":2,"Chelsea":2,"Liverpool":2,"Man Utd":2,"Fulham":1,"Brentford":2,"Everton":1,"Aston Villa":2,"Wolves":1}},{"name":"Josh","lives":0,"wins":19,"draws":5,"losses":5,"eliminated":false,"wildcardUsed":false,"drawcardUsed":true,"used":{"Spurs":2,"Bournemouth":2,"Notts Forest":2,"Newcastle":2,"Leeds":1,"Arsenal":2,"Man City":2,"Chelsea":2,"Brighton":2,"Man Utd":2,"Aston Villa":2,"Everton":2,"Liverpool":2,"Sunderland":1,"Fulham":2,"Brentford":1}},{"name":"Niall","lives":0,"wins":18,"draws":7,"losses":4,"eliminated":false,"wildcardUsed":false,"drawcardUsed":true,"used":{"Notts Forest":2,"Aston Villa":1,"Crystal Palace":1,"Fulham":1,"Spurs":1,"Arsenal":2,"Man City":1,"Chelsea":1,"Newcastle":2,"Bournemouth":1,"Brentford":1,"Brighton":1,"Sunderland":1}},{"name":"Blake","lives":0,"wins":19,"draws":5,"losses":5,"eliminated":false,"wildcardUsed":true,"drawcardUsed":false,"used":{"West Ham":1,"Aston Villa":1,"Everton":1,"Chelsea":2,"Notts Forest":1,"Spurs":1,"Crystal Palace":1,"Man City":1,"Man Utd":1,"Bournemouth":2}},{"name":"Flynn","lives":0,"wins":17,"draws":9,"losses":3,"eliminated":false,"wildcardUsed":true,"drawcardUsed":true,"used":{"Everton":2,"Arsenal":2,"Newcastle":2,"Liverpool":2,"Notts Forest":2,"Man City":2,"Spurs":1,"Burnley":2,"Chelsea":2,"Fulham":1,"Bournemouth":1,"Sunderland":2,"Man Utd":1,"Brighton":2,"Brentford":1}},{"name":"Aiden","lives":0,"wins":18,"draws":7,"losses":4,"eliminated":false,"wildcardUsed":false,"drawcardUsed":false,"used":{"West Ham":1,"Aston Villa":2,"Chelsea":2,"Crystal Palace":1,"Notts Forest":1,"Spurs":2,"Sunderland":1,"Brighton":1,"Arsenal":2,"Man Utd":2,"Man City":1,"Newcastle":2,"Bournemouth":1,"Liverpool":1}},{"name":"Andy L","lives":0,"wins":16,"draws":6,"losses":5,"eliminated":false,"wildcardUsed":false,"drawcardUsed":true,"used":{"Spurs":2,"Sunderland":2,"Chelsea":2,"Newcastle":2,"Aston Villa":2,"Everton":2,"Arsenal":2,"Leeds":1,"Fulham":1,"Liverpool":2,"Man City":2,"Man Utd":2,"Brighton":2,"Notts Forest":1}},{"name":"Dave","lives":0,"wins":18,"draws":7,"losses":4,"eliminated":false,"wildcardUsed":false,"drawcardUsed":false,"used":{"Spurs":2,"Arsenal":2,"Man Utd":2,"Fulham":1,"Notts Forest":2,"Man City":2,"Aston Villa":1,"Liverpool":2,"Chelsea":1,"Brighton":2,"Bournemouth":2,"Newcastle":2,"Everton":2}},{"name":"Q","lives":-1,"wins":2,"draws":0,"losses":8,"eliminated":true,"wildcardUsed":false,"drawcardUsed":false,"used":{"Bournemouth":1,"Chelsea":2,"Fulham":2,"Notts Forest":1,"Everton":1,"Man Utd":1,"West Ham":1,"Leeds":1}}]}
+</script>
+
+<script>
+/* =======================================================================
+   KAMIKAZE FOOTBALL — Premier League admin console
+   Admin-only. Picks come in via WhatsApp; you enter & resolve them here.
+
+   RULES BUILT IN
+   - Start 15 lives. Win 0 · Draw -1 · Loss -2.
+   - Each team usable max 2x per manager (then banned for them).
+   - Wildcard (1/season): a Draw costs no life.
+   - Drawcard (1/season): betting a draw -> Draw +1 life, Win/Loss -1 life.
+   - Below 0 lives = eliminated (0 is still alive).
+   - No pick received -> first AWAY team in the fixture list they haven't used twice.
+   - Tiebreak: most lives -> fewest losses -> lowest summed strength of remaining teams.
+   ======================================================================= */
+
+/* ---------- 1. FIREBASE (paste your config to go live across devices) ----- */
+const firebaseConfig = {
+  // apiKey: "…",
+  // authDomain: "…",
+  // databaseURL: "https://YOUR-PROJECT.firebaseio.com",
+  // projectId: "…",
+};
+const DB_PATH = 'kamikaze_pl';   // change if you run more than one league
+
+/* ---------- 2. STORE (Firebase if configured, else in-memory) ------------ */
+const SEED = JSON.parse(document.getElementById('seed').textContent);
+let state = structuredClone(SEED);
+let fbRef = null;
+
+function dataLive(on, text){
+  const c = document.getElementById('dataChip');
+  c.className = 'chip ' + (on ? 'live' : 'local');
+  document.getElementById('dataChipText').textContent = text;
+}
+
+async function initStore(){
+  const configured = firebaseConfig.databaseURL && firebaseConfig.apiKey;
+  if(!configured || typeof firebase === 'undefined'){
+    dataLive(false, configured ? 'Firebase unreachable · local' : 'Local data (no sync)');
+    render(); return;
+  }
+  try{
+    firebase.initializeApp(firebaseConfig);
+    fbRef = firebase.database().ref(DB_PATH);
+    const snap = await fbRef.get();
+    if(snap.exists()){ state = snap.val(); }
+    else { await fbRef.set(state); }            // first run: seed the DB
+    fbRef.on('value', s => { if(s.exists()){ state = s.val(); render(); } });
+    dataLive(true, 'Firebase · synced');
+  }catch(e){
+    console.warn('Firebase init failed, staying local:', e);
+    dataLive(false, 'Firebase error · local');
+  }
+  render();
+}
+function save(){
+  if(fbRef){ fbRef.set(state).catch(e=>console.warn('save failed', e)); }
+  render();
+}
+function normaliseUsed(){ state.managers.forEach(m=>{ m.used = m.used||{}; m.picks = m.picks||{}; }); }
+
+/* ---------- 3. RULES HELPERS -------------------------------------------- */
+const teamByName = n => state.teams.find(t=>t.name===n);
+const aliveManagers = () => state.managers.filter(m=>!m.eliminated);
+function used(m,t){ return (m.used && m.used[t]) || 0; }
+function isBanned(m,t){ return used(m,t) >= state.maxPicksPerTeam; }
+function availableTeams(m){ return state.teams.filter(t=>!isBanned(m,t.name)); }
+function remainingStrengthSum(m){
+  return state.teams.filter(t=>!isBanned(m,t.name)).reduce((s,t)=>s+t.strength,0);
+}
+function gw(){ return state.currentGw; }
+function gwObj(n, create){
+  state.gameweeks = state.gameweeks || {};
+  if(!state.gameweeks[n] && create) state.gameweeks[n] = {status:'open', fixtures:[], results:{}, picks:{}};
+  return state.gameweeks[n];
+}
+function sortedStandings(){
+  return [...state.managers].sort((a,b)=>{
+    if(a.eliminated !== b.eliminated) return a.eliminated?1:-1;
+    if(b.lives !== a.lives) return b.lives - a.lives;          // most lives
+    if(a.losses !== b.losses) return a.losses - b.losses;       // fewest losses
+    return remainingStrengthSum(a) - remainingStrengthSum(b);   // weakest remaining squad wins
+  });
+}
+
+/* ---------- 4. RENDER ---------------------------------------------------- */
+let activeTab = 'standings';
+const view = document.getElementById('view');
+
+function render(){
+  normaliseUsed();
+  document.getElementById('gwNum').textContent = gw();
+  const g = gwObj(gw());
+  const st = g ? g.status : 'open';
+  document.getElementById('gwState').innerHTML =
+    st==='resolved' ? 'Status · <b>resolved</b>' :
+    st==='locked'   ? 'Status · locked' : 'Status · open';
+  document.getElementById('aliveCount').textContent = aliveManagers().length;
+  ({standings:renderStandings, picks:renderPicks, resolve:renderResolve, limits:renderLimits}[activeTab])();
+}
+
+/* --- Standings --- */
+function pip(i, lives){
+  let cls='pip';
+  if(i < lives){
+    cls += lives<=2 ? ' danger' : lives<=5 ? ' warn' : ' on';
+  }
+  return `<span class="${cls}"></span>`;
+}
+function renderStandings(){
+  const rows = sortedStandings();
+  let aliveRank = 0, html = '';
+  html += `<div class="panel"><div class="phead">
+      <h2>Standings</h2>
+      <span class="hint">Tap a W / D chip to flip a manager's card status</span>
+    </div><div class="board">
+    <div class="row head"><span>#</span><span>Manager</span><span>Lives</span><span class="h-wdl">W·D·L</span><span class="h-bans">Banned</span></div>`;
+  let firstDead = true;
+  rows.forEach(m=>{
+    if(m.eliminated && firstDead){ html += `<div class="sep">Eliminated</div>`; firstDead=false; }
+    if(!m.eliminated) aliveRank++;
+    const L = m.lives;
+    const lifeCls = L<=0?'danger':L<=2?'danger':L<=5?'warn':'go';
+    const pips = Array.from({length:15}, (_,i)=>pip(i, L)).join('');
+    const bans = state.teams.filter(t=>isBanned(m,t.name)).length;
+    const wc = `<span class="cardpip ${m.wildcardUsed?'used':'avail'}" data-card="wild" data-m="${m.name}" title="Wildcard">W</span>`;
+    const dc = `<span class="cardpip ${m.drawcardUsed?'used':'avail'}" data-card="draw" data-m="${m.name}" title="Drawcard">D</span>`;
+    html += `<div class="row mgr ${m.eliminated?'out':''}">
+      <span class="rank ${(!m.eliminated&&aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
+      <span class="who"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}</span>
+        ${m.eliminated?'<span class="outtag">Out</span>':''}</span>
+      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span></span>
+      <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
+      <span class="bans">${bans}/20</span>
+    </div>`;
+  });
+  html += `</div></div>`;
+  view.innerHTML = html;
+  view.querySelectorAll('.cardpip').forEach(el=>{
+    el.onclick = ()=>{
+      const m = state.managers.find(x=>x.name===el.dataset.m);
+      const key = el.dataset.card==='wild' ? 'wildcardUsed' : 'drawcardUsed';
+      m[key] = !m[key]; save();
+    };
+  });
+}
+
+/* --- Enter picks --- */
+function renderPicks(){
+  const n = gw(); const g = gwObj(n, true);
+  if(g.status==='resolved'){
+    view.innerHTML = `<div class="panel"><div class="phead"><h2>Enter picks · GW ${n}</h2></div>
+      <div class="empty"><div class="big">Gameweek ${n} is resolved</div>
+      <p class="note">Picks are locked. Step to a later gameweek to enter new picks.</p></div></div>`;
+    return;
+  }
+  const alive = aliveManagers();
+  let html = `<div class="panel"><div class="phead"><h2>Enter picks · GW ${n}</h2>
+    <span class="hint">${alive.length} managers in · banned teams are hidden automatically</span></div>`;
+  alive.forEach(m=>{
+    const p = (g.picks && g.picks[m.name]) || {};
+    const opts = availableTeams(m).sort((a,b)=>b.strength-a.strength).map(t=>{
+      const rem = state.maxPicksPerTeam - used(m,t.name);
+      const sel = p.team===t.name ? 'selected':'';
+      return `<option value="${t.name}" ${sel}>${t.name} · ${rem} left</option>`;
+    }).join('');
+    const auto = p.team===undefined && p.auto ? 'selected':'';
+    const noneSel = (p.team===undefined && !p.auto) ? 'selected':'';
+    html += `<div class="pickrow" data-m="${m.name}">
+      <span class="nm">${m.name}</span>
+      <select class="pkTeam">
+        <option value="" ${noneSel}>— select team —</option>
+        <option value="__AUTO__" ${auto}>↳ no pick (auto: first away team)</option>
+        ${opts}
+      </select>
+      <span class="opts">
+        <label class="ck"><input type="checkbox" class="pkWild" ${p.wildcard?'checked':''} ${m.wildcardUsed?'disabled':''}> Wildcard</label>
+        <label class="ck"><input type="checkbox" class="pkDraw" ${p.drawcard?'checked':''} ${m.drawcardUsed?'disabled':''}> Drawcard</label>
+      </span>
+    </div>`;
+  });
+  html += `<div class="toolbar">
+      <button class="btn" id="savePicks">Save picks</button>
+      <span class="note" id="pickCount"></span>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="goResolve">Go to resolve ›</button>
+    </div></div>`;
+  view.innerHTML = html;
+
+  // wildcard & drawcard mutually exclusive in a single week
+  view.querySelectorAll('.pickrow').forEach(rowEl=>{
+    const w = rowEl.querySelector('.pkWild'), d = rowEl.querySelector('.pkDraw');
+    if(w&&d){ w.addEventListener('change',()=>{ if(w.checked) d.checked=false; });
+              d.addEventListener('change',()=>{ if(d.checked) w.checked=false; }); }
+  });
+  document.getElementById('savePicks').onclick = savePicks;
+  document.getElementById('goResolve').onclick = ()=>setTab('resolve');
+  updatePickCount();
+}
+function readPicksFromForm(){
+  const n = gw(); const g = gwObj(n, true); g.picks = g.picks || {};
+  view.querySelectorAll('.pickrow').forEach(rowEl=>{
+    const name = rowEl.dataset.m;
+    const v = rowEl.querySelector('.pkTeam').value;
+    const wild = rowEl.querySelector('.pkWild').checked;
+    const draw = rowEl.querySelector('.pkDraw').checked;
+    if(v==='') { delete g.picks[name]; return; }
+    if(v==='__AUTO__') g.picks[name] = {auto:true, wildcard:wild, drawcard:draw};
+    else g.picks[name] = {team:v, wildcard:wild, drawcard:draw};
+  });
+}
+function updatePickCount(){
+  const g = gwObj(gw(), true); const got = Object.keys(g.picks||{}).length;
+  const el = document.getElementById('pickCount');
+  if(el) el.textContent = `${got}/${aliveManagers().length} entered`;
+}
+function savePicks(){ readPicksFromForm(); save(); toast('Picks saved'); updatePickCount(); }
+
+/* --- Resolve --- */
+function renderResolve(){
+  const n = gw(); const g = gwObj(n, true);
+  if(g.status==='resolved'){
+    view.innerHTML = `<div class="panel"><div class="phead"><h2>Resolve · GW ${n}</h2></div>
+      <div class="okbox" style="margin:16px">Gameweek ${n} has been resolved and applied to the table.</div>
+      <div class="toolbar"><button class="btn warn" id="undo">Undo this gameweek</button>
+      <span class="note">Reverses the life/record changes from GW ${n}.</span></div></div>`;
+    document.getElementById('undo').onclick = ()=>undoGameweek(n);
+    return;
+  }
+  // gather the teams that were picked this week so you only set results that matter
+  readPicksLeniently(g);
+  const picked = new Set();
+  Object.values(g.picks||{}).forEach(p=>{ if(p.team) picked.add(p.team); });
+  const teamsToRate = state.teams.filter(t=>picked.has(t.name))
+      .sort((a,b)=>b.strength-a.strength);
+
+  let html = `<div class="panel"><div class="phead"><h2>Resolve · GW ${n}</h2>
+    <span class="hint">Set how each picked team got on, then apply</span></div>`;
+
+  if(teamsToRate.length===0){
+    html += `<div class="empty"><div class="big">No picks to resolve yet</div>
+      <p class="note">Enter this week's picks first, then come back to set results.</p></div>
+      <div class="toolbar"><button class="btn ghost" id="toPicks">‹ Enter picks</button></div></div>`;
+    view.innerHTML = html;
+    document.getElementById('toPicks').onclick=()=>setTab('picks');
+    return;
+  }
+  g.results = g.results || {};
+  teamsToRate.forEach(t=>{
+    const r = g.results[t.name] || '';
+    html += `<div class="fixrow" data-team="${t.name}">
+      <span class="nm">${t.name} <span class="strength">str ${t.strength}</span></span>
+      <span></span><span></span>
+      <span class="seg">
+        <button class="rW ${r==='W'?'on H':''}" data-r="W">Win</button>
+        <button class="rD ${r==='D'?'on D':''}" data-r="D">Draw</button>
+        <button class="rL ${r==='L'?'on A':''}" data-r="L">Loss</button>
+      </span></div>`;
+  });
+
+  // any auto-pick managers without an assigned away team -> warn
+  const autoPending = Object.entries(g.picks||{}).filter(([,p])=>p.auto && !p.team).map(([m])=>m);
+  html += `<div style="padding:12px 16px">`;
+  if(autoPending.length){
+    html += `<div class="warnbox">Auto-pick set for ${autoPending.join(', ')} but no fixture list is loaded,
+      so no away team can be assigned. Either set their team on the picks tab, or they'll be skipped.</div>`;
+  }
+  html += `</div>`;
+  html += `<div class="toolbar">
+      <button class="btn" id="applyGw">Apply gameweek ${n}</button>
+      <span class="note" id="resCount"></span>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="backPicks">‹ Picks</button>
+    </div></div>`;
+
+  // live preview of what applying will do
+  html += renderPreview(g);
+  view.innerHTML = html;
+
+  view.querySelectorAll('.fixrow .seg button').forEach(b=>{
+    b.onclick = ()=>{
+      const team = b.closest('.fixrow').dataset.team;
+      g.results[team] = b.dataset.r; save();   // re-renders, keeps it simple
+      setTab('resolve');
+    };
+  });
+  document.getElementById('applyGw').onclick = ()=>applyGameweek(n);
+  document.getElementById('backPicks').onclick = ()=>setTab('picks');
+  const need = teamsToRate.length, have = teamsToRate.filter(t=>g.results[t.name]).length;
+  document.getElementById('resCount').textContent = `${have}/${need} results set`;
+  document.getElementById('applyGw').disabled = have<need;
+}
+function readPicksLeniently(g){ g.picks = g.picks || {}; } // picks already saved via savePicks
+
+function effect(p, result){
+  // returns {delta, outcome:'W'|'D'|'L', note}
+  if(p.drawcard){
+    if(result==='D') return {delta:+1, outcome:'D', note:'drawcard hit (+1)'};
+    return {delta:-1, outcome:result, note:'drawcard miss (-1)'};
+  }
+  if(result==='W') return {delta:0, outcome:'W', note:''};
+  if(result==='D') return p.wildcard ? {delta:0, outcome:'D', note:'wildcard (draw saved)'}
+                                     : {delta:-1, outcome:'D', note:''};
+  return {delta:-2, outcome:'L', note:''};
+}
+function renderPreview(g){
+  const rows = Object.entries(g.picks||{}).filter(([,p])=>p.team).map(([name,p])=>{
+    const m = state.managers.find(x=>x.name===name);
+    const res = g.results[p.team];
+    if(!res) return `<tr><td>${name}</td><td>${p.team}</td><td class="num">—</td><td class="num">—</td><td>${m.lives}</td></tr>`;
+    const e = effect(p, res);
+    const nl = m.lives + e.delta;
+    const cls = e.delta>0?'go':e.delta<0?'danger':'';
+    const flags = [p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
+    return `<tr>
+      <td>${name} ${flags?`<span class="strength">${flags}</span>`:''}</td>
+      <td>${p.team}</td>
+      <td class="num">${res}</td>
+      <td class="num" style="color:var(--${cls||'muted'})">${e.delta>0?'+':''}${e.delta}</td>
+      <td class="num">${m.lives} → <b style="color:var(--${nl<0?'danger':nl<=2?'warn':'go'})">${nl}</b>${nl<0?' ☠':''}</td>
+    </tr>`;
+  }).join('');
+  if(!rows) return '';
+  return `<div class="panel"><div class="phead"><h2>Preview</h2><span class="hint">what “Apply” will do</span></div>
+    <table class="grid"><thead><tr><th>Manager</th><th>Team</th><th class="num">Res</th><th class="num">Δ</th><th class="num">Lives</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+function applyGameweek(n){
+  const g = gwObj(n, true);
+  const picks = Object.entries(g.picks||{}).filter(([,p])=>p.team);
+  // snapshot for undo
+  g._undo = state.managers.map(m=>({name:m.name, lives:m.lives, wins:m.wins, draws:m.draws,
+            losses:m.losses, eliminated:m.eliminated, wildcardUsed:m.wildcardUsed,
+            drawcardUsed:m.drawcardUsed, used:structuredClone(m.used)}));
+  picks.forEach(([name,p])=>{
+    const m = state.managers.find(x=>x.name===name);
+    const res = g.results[p.team]; if(!res) return;
+    const e = effect(p, res);
+    m.lives += e.delta;
+    if(e.outcome==='W') m.wins++; else if(e.outcome==='D') m.draws++; else m.losses++;
+    m.used[p.team] = used(m,p.team) + 1;
+    if(p.wildcard) m.wildcardUsed = true;
+    if(p.drawcard) m.drawcardUsed = true;
+    if(m.lives < 0) m.eliminated = true;
+  });
+  g.status = 'resolved';
+  state.currentGw = n + 1;
+  save();
+  toast(`Gameweek ${n} applied`);
+  setTab('standings');
+}
+function undoGameweek(n){
+  const g = gwObj(n); if(!g || !g._undo){ toast('Nothing to undo'); return; }
+  g._undo.forEach(s=>{
+    const m = state.managers.find(x=>x.name===s.name);
+    Object.assign(m, {lives:s.lives, wins:s.wins, draws:s.draws, losses:s.losses,
+      eliminated:s.eliminated, wildcardUsed:s.wildcardUsed, drawcardUsed:s.drawcardUsed,
+      used:structuredClone(s.used)});
+  });
+  delete g._undo; g.status = 'open'; state.currentGw = n;
+  save(); toast(`Gameweek ${n} reopened`); setTab('resolve');
+}
+
+/* --- Squad limits / bans --- */
+function renderLimits(){
+  let html = `<div class="panel"><div class="phead"><h2>Squad limits</h2>
+    <span class="hint">Each team usable ${state.maxPicksPerTeam}× · then banned for that manager</span></div>
+    <div style="overflow-x:auto"><table class="grid"><thead><tr><th>Manager</th><th class="num">Bans</th><th>Banned teams (used ${state.maxPicksPerTeam}×)</th><th class="num">Squad str</th></tr></thead><tbody>`;
+  sortedStandings().forEach(m=>{
+    const banned = state.teams.filter(t=>isBanned(m,t.name)).map(t=>t.name);
+    html += `<tr ${m.eliminated?'style="opacity:.5"':''}>
+      <td>${m.name}</td>
+      <td class="num">${banned.length}</td>
+      <td class="banlist">${banned.length?banned.join(', '):'<span class="strength">none</span>'}</td>
+      <td class="num">${remainingStrengthSum(m)}</td></tr>`;
+  });
+  html += `</tbody></table></div>
+    <div class="toolbar"><span class="note">“Squad str” = summed strength of teams still available — the final tiebreak (lower wins).</span></div></div>`;
+  view.innerHTML = html;
+}
+
+/* ---------- 5. CHROME / EVENTS ------------------------------------------ */
+function setTab(t){
+  activeTab = t;
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===t));
+  render();
+}
+document.getElementById('tabs').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(b) setTab(b.dataset.tab);
+});
+document.getElementById('gwUp').onclick = ()=>{ state.currentGw++; render(); };
+document.getElementById('gwDown').onclick = ()=>{ if(state.currentGw>1){ state.currentGw--; render(); } };
+
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+/* ---------- 6. BOOT ----------------------------------------------------- */
+// load Firebase only if a config is present
+(function boot(){
+  const configured = firebaseConfig.databaseURL && firebaseConfig.apiKey;
+  if(configured){
+    const a=document.createElement('script'); a.src='https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js';
+    const b=document.createElement('script'); b.src='https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js';
+    a.onload=()=>document.head.appendChild(b); b.onload=initStore;
+    a.onerror=initStore; b.onerror=initStore;
+    document.head.appendChild(a);
+  } else {
+    initStore();
+  }
+})();
+</script>
+</body>
+</html>
