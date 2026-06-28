@@ -612,6 +612,15 @@ async function shareFixturesImage(gwNum, fixtures){
   }
 }
 async function shareStandingsImage(){
+  function cardBadge(label, usedFlag, result){
+    if(!usedFlag) return `<span style="font-size:9px;font-weight:600;color:#5e7095;border:1px solid #283a5c;border-radius:4px;padding:1px 4px;">${label}</span>`;
+    if(result===undefined || result===null){
+      return `<span style="font-size:9px;font-weight:600;color:#8ea0c0;border:1px solid #283a5c;background:#16223a;border-radius:4px;padding:1px 4px;">${label}</span>`;
+    }
+    const success = result==='D';
+    const color = success ? '#19e2a0' : '#ff5b7e';
+    return `<span style="font-size:9px;font-weight:600;color:${color};border:1px solid ${color};border-radius:4px;padding:1px 4px;">${label}${success?'✓':'✗'}</span>`;
+  }
   try{
     const rows = sortedStandings();
     let aliveRank=0, firstDead=true, rowsHtml='';
@@ -624,11 +633,12 @@ async function shareStandingsImage(){
       const L = m.lives;
       const liveColor = L<=2 ? '#ff5b7e' : L<=5 ? '#ffc043' : '#19e2a0';
       const nameStyle = m.eliminated ? 'color:#5e7095;text-decoration:line-through;' : 'color:#eaf1fb;';
-      rowsHtml += `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1c2a44;">
-        <span style="width:22px;font-family:Barlow,sans-serif;font-weight:700;font-size:15px;color:${m.eliminated?'#5e7095':'#8ea0c0'};text-align:center;">${m.eliminated?'–':aliveRank}</span>
+      rowsHtml += `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #1c2a44;">
+        <span style="width:22px;font-family:Barlow,sans-serif;font-weight:700;font-size:15px;color:${m.eliminated?'#5e7095':'#8ea0c0'};text-align:center;flex-shrink:0;">${m.eliminated?'–':aliveRank}</span>
         <span style="flex:1;font-size:14px;${nameStyle}">${m.name}</span>
-        <span style="font-family:ui-monospace,monospace;font-size:12.5px;color:#8ea0c0;width:58px;text-align:center;">${m.wins}·${m.draws}·${m.losses}</span>
-        <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:${liveColor};width:24px;text-align:right;">${L}</span>
+        <span style="display:flex;gap:3px;flex-shrink:0;">${cardBadge('WC', m.wildcardUsed, m.wildcardResult)}${cardBadge('DC', m.drawcardUsed, m.drawcardResult)}</span>
+        <span style="font-family:ui-monospace,monospace;font-size:12.5px;color:#8ea0c0;width:52px;text-align:center;flex-shrink:0;">${m.wins}·${m.draws}·${m.losses}</span>
+        <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:${liveColor};width:22px;text-align:right;flex-shrink:0;">${L}</span>
       </div>`;
     });
     const html = `
@@ -637,11 +647,13 @@ async function shareStandingsImage(){
         <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
       </div>
       <div style="font-size:13px;color:#8ea0c0;margin-bottom:6px;">Standings · Gameweek ${gw()} · ${aliveManagers().length} alive</div>
-      <div style="display:flex;gap:10px;padding:4px 0 8px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#5e7095;">
-        <span style="width:22px;text-align:center;">#</span><span style="flex:1;">Manager</span>
-        <span style="width:58px;text-align:center;">W·D·L</span><span style="width:24px;text-align:right;">Lives</span>
+      <div style="display:flex;gap:8px;padding:4px 0 8px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#5e7095;">
+        <span style="width:22px;text-align:center;flex-shrink:0;">#</span><span style="flex:1;">Manager</span>
+        <span style="width:62px;flex-shrink:0;">Cards</span>
+        <span style="width:52px;text-align:center;flex-shrink:0;">W·D·L</span><span style="width:22px;text-align:right;flex-shrink:0;">Lives</span>
       </div>
-      <div style="border-top:1px solid #1c2a44;">${rowsHtml}</div>`;
+      <div style="border-top:1px solid #1c2a44;">${rowsHtml}</div>
+      <div style="font-size:9.5px;color:#5e7095;margin-top:12px;">WC = Wildcard · DC = Drawcard · ✓ successful (drew) · ✗ unsuccessful · grey = used, unsuccessful unrecorded · outline only = not used</div>`;
     await exportCardAsShare(html, `kamikaze-${(state.season||'standings').replace(/\//g,'-')}-gw${gw()}-standings.png`, `${state.season||''} standings`);
   }catch(e){
     if(e && e.name === 'AbortError') return;
@@ -731,8 +743,13 @@ function renderStandings(){
     const lifeCls = L<=0?'danger':L<=2?'danger':L<=5?'warn':'go';
     const pips = Array.from({length:15}, (_,i)=>pip(i, L)).join('');
     const bans = state.teams.filter(t=>isBanned(m,t.name)).length;
-    const wc = `<span class="cardpip ${m.wildcardUsed?'used':'avail'}" data-card="wild" data-m="${m.name}" title="Wildcard">W</span>`;
-    const dc = `<span class="cardpip ${m.drawcardUsed?'used':'avail'}" data-card="draw" data-m="${m.name}" title="Drawcard">D</span>`;
+    const cardTitle = (used, result, name)=>{
+      if(!used) return `${name}: not used`;
+      if(result===undefined || result===null) return `${name}: used`;
+      return `${name}: used — ${result==='D' ? 'successful (drew)' : 'unsuccessful ('+result+')'}`;
+    };
+    const wc = `<span class="cardpip ${m.wildcardUsed?'used':'avail'}" data-card="wild" data-m="${m.name}" title="${cardTitle(m.wildcardUsed, m.wildcardResult, 'Wildcard')}">W</span>`;
+    const dc = `<span class="cardpip ${m.drawcardUsed?'used':'avail'}" data-card="draw" data-m="${m.name}" title="${cardTitle(m.drawcardUsed, m.drawcardResult, 'Drawcard')}">D</span>`;
     html += `<div class="row mgr ${m.eliminated?'out':''}">
       <span class="rank ${(!m.eliminated&&aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
       <span class="who"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}</span>
@@ -755,11 +772,14 @@ function renderStandings(){
     el.onclick = ()=>{
       const m = state.managers.find(x=>x.name===el.dataset.m);
       const key = el.dataset.card==='wild' ? 'wildcardUsed' : 'drawcardUsed';
+      const resultKey = el.dataset.card==='wild' ? 'wildcardResult' : 'drawcardResult';
       const cardName = el.dataset.card==='wild' ? 'Wildcard' : 'Drawcard';
       const nowUsed = !m[key];
       const verb = nowUsed ? 'mark as used' : 'mark as available';
       if(!confirm(`${verb.charAt(0).toUpperCase()+verb.slice(1)}: ${m.name}'s ${cardName}?`)) return;
-      m[key] = nowUsed; save();
+      m[key] = nowUsed;
+      if(!nowUsed) m[resultKey] = null;   // manually un-using it clears any recorded outcome
+      save();
     };
   });
 }
@@ -1050,7 +1070,8 @@ function applyGameweek(n){
   // snapshot for undo
   g._undo = state.managers.map(m=>({name:m.name, lives:m.lives, wins:m.wins, draws:m.draws,
             losses:m.losses, eliminated:m.eliminated, wildcardUsed:m.wildcardUsed,
-            drawcardUsed:m.drawcardUsed, used:structuredClone(m.used)}));
+            drawcardUsed:m.drawcardUsed, wildcardResult:m.wildcardResult, drawcardResult:m.drawcardResult,
+            used:structuredClone(m.used)}));
   picks.forEach(([name,p])=>{
     const m = state.managers.find(x=>x.name===name);
     const res = g.results[p.team]; if(!res) return;
@@ -1058,8 +1079,9 @@ function applyGameweek(n){
     m.lives += e.delta;
     if(e.outcome==='W') m.wins++; else if(e.outcome==='D') m.draws++; else m.losses++;
     m.used[p.team] = used(m,p.team) + 1;
-    if(p.wildcard) m.wildcardUsed = true;
-    if(p.drawcard) m.drawcardUsed = true;
+    // both cards key off "was it a draw" — record the actual result so success/fail is known later
+    if(p.wildcard){ m.wildcardUsed = true; m.wildcardResult = res; }
+    if(p.drawcard){ m.drawcardUsed = true; m.drawcardResult = res; }
     if(m.lives <= 0) m.eliminated = true;
   });
   g.status = 'resolved';
@@ -1074,6 +1096,7 @@ function undoGameweek(n){
     const m = state.managers.find(x=>x.name===s.name);
     Object.assign(m, {lives:s.lives, wins:s.wins, draws:s.draws, losses:s.losses,
       eliminated:s.eliminated, wildcardUsed:s.wildcardUsed, drawcardUsed:s.drawcardUsed,
+      wildcardResult:s.wildcardResult, drawcardResult:s.drawcardResult,
       used:structuredClone(s.used)});
   });
   delete g._undo; g.status = 'open'; state.currentGw = n;
