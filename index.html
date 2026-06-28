@@ -536,6 +536,22 @@ async function publishPublicStats(){
       pickedTeamValue: ptv.total, pickedTeamValueCount: ptv.count
     };
   });
+  const managerOrder = rows.map(r=>r.name);
+  const history = Object.keys(state.gameweeks||{}).map(Number).sort((a,b)=>a-b)
+    .filter(n=>state.gameweeks[n].picks && Object.keys(state.gameweeks[n].picks).length)
+    .map(n=>{
+      const g = state.gameweeks[n];
+      const resolved = g.status==='resolved';
+      const picks = {};
+      Object.entries(g.picks||{}).forEach(([name,p])=>{
+        if(!p || !p.team) return;
+        picks[name] = {
+          team: p.team, auto: !!p.auto, wildcard: !!p.wildcard, drawcard: !!p.drawcard,
+          result: (resolved && g.results) ? (g.results[p.team] || null) : null
+        };
+      });
+      return {gw:n, resolved, picks};
+    });
   const snapshot = {
     season: state.season || '',
     gw: gw(),
@@ -543,7 +559,9 @@ async function publishPublicStats(){
     totalCount: state.managers.length,
     startingLives: state.startingLives || 15,
     maxPicksPerTeam: state.maxPicksPerTeam || 2,
+    managerOrder,
     managers: rows,
+    history,
     publishedAt: new Date().toISOString()
   };
   await firebase.database().ref(`${PUBLIC_PATH}/current`).set(snapshot);
