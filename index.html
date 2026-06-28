@@ -566,7 +566,11 @@ function renderStandings(){
     el.onclick = ()=>{
       const m = state.managers.find(x=>x.name===el.dataset.m);
       const key = el.dataset.card==='wild' ? 'wildcardUsed' : 'drawcardUsed';
-      m[key] = !m[key]; save();
+      const cardName = el.dataset.card==='wild' ? 'Wildcard' : 'Drawcard';
+      const nowUsed = !m[key];
+      const verb = nowUsed ? 'mark as used' : 'mark as available';
+      if(!confirm(`${verb.charAt(0).toUpperCase()+verb.slice(1)}: ${m.name}'s ${cardName}?`)) return;
+      m[key] = nowUsed; save();
     };
   });
 }
@@ -622,13 +626,13 @@ function renderPicks(){
       return `<option value="${t.name}" ${sel}>${t.name} · ${rem} left</option>`;
     }).join('');
     const autoT = autoPickTeam(m,g);
-    const autoLabel = autoT ? `↳ no pick (auto: ${autoT})` : `↳ no pick (add fixtures to auto-assign)`;
+    const autoLabel = autoT ? `Auto: ${autoT}` : `Auto (add fixtures first)`;
     const auto = p.team===undefined && p.auto ? 'selected':'';
     const noneSel = (p.team===undefined && !p.auto) ? 'selected':'';
     html += `<div class="pickrow" data-m="${m.name}">
       <span class="nm">${m.name}</span>
       <select class="pkTeam">
-        <option value="" ${noneSel}>— no pick yet${autoT?` (→ ${autoT})`:''} —</option>
+        <option value="" ${noneSel}>No pick yet${autoT?` — Auto: ${autoT}`:''}</option>
         <option value="__AUTO__" ${auto}>${autoLabel}</option>
         ${opts}
       </select>
