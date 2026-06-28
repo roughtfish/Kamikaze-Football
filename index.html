@@ -215,6 +215,16 @@
   .ruleslist{margin:8px 0 4px;padding-left:22px;color:var(--muted);font-size:14.5px;line-height:1.6}
   .ruleslist li{margin-bottom:6px}
   .ruleslist b{color:var(--ink)}
+  .histtable{white-space:nowrap}
+  .histtable th{position:sticky;top:0;background:var(--panel);z-index:1}
+  .histtable td.num{position:sticky;left:0;background:var(--panel);z-index:1}
+  .histcell{min-width:96px}
+  .histteam{font-weight:500}
+  .histres{display:inline-block;font-family:var(--disp);font-size:10px;font-weight:700;
+    border-radius:4px;padding:0 4px;margin-left:5px;vertical-align:middle}
+  .histres.go{color:var(--go);border:1px solid var(--go-dim)}
+  .histres.warn{color:var(--warn);border:1px solid var(--warn)}
+  .histres.danger{color:var(--danger);border:1px solid var(--danger)}
   .fxbox{background:var(--panel);border:1px solid var(--line-soft);border-radius:14px;margin-bottom:16px;overflow:hidden}
   .fxbox>summary{padding:13px 16px;cursor:pointer;font-family:var(--disp);text-transform:uppercase;letter-spacing:.05em;font-size:14px;list-style:none}
   .fxbox>summary::-webkit-details-marker{display:none}
@@ -268,6 +278,7 @@
     <button data-tab="resolve">Resolve</button>
     <button data-tab="limits">Squad limits</button>
     <button data-tab="season">Season</button>
+    <button data-tab="history">History</button>
     <button data-tab="rules">Rules</button>
   </nav>
 </div>
@@ -836,7 +847,7 @@ function render(){
     st==='resolved' ? 'Status · <b>resolved</b>' :
     st==='locked'   ? 'Status · locked' : 'Status · open';
   document.getElementById('aliveCount').textContent = aliveManagers().length;
-  ({standings:renderStandings, picks:renderPicks, resolve:renderResolve, limits:renderLimits, season:renderSeason, rules:renderRules}[activeTab])();
+  ({standings:renderStandings, picks:renderPicks, resolve:renderResolve, limits:renderLimits, season:renderSeason, rules:renderRules, history:renderHistory}[activeTab])();
 }
 
 /* --- Standings --- */
@@ -1294,6 +1305,39 @@ function renderLimits(){
       note.textContent = 'Fetch failed: '+e.message;
     }
   };
+}
+
+/* --- Pick history --- */
+function renderHistory(){
+  const gws = Object.keys(state.gameweeks||{}).map(Number).sort((a,b)=>a-b)
+    .filter(n => state.gameweeks[n].picks && Object.keys(state.gameweeks[n].picks).length);
+  if(!gws.length){
+    view.innerHTML = `<div class="panel"><div class="phead"><h2>Pick history</h2></div>
+      <div class="empty"><div class="big">No picks recorded yet</div>
+      <p class="note">Once a gameweek has picks entered, they'll show up here.</p></div></div>`;
+    return;
+  }
+  const mgrs = state.managers.map(m=>m.name);
+  const head = `<tr><th>GW</th>${mgrs.map(n=>`<th>${n}</th>`).join('')}</tr>`;
+  const rows = gws.map(n=>{
+    const g = state.gameweeks[n];
+    const resolved = g.status==='resolved';
+    const cells = mgrs.map(name=>{
+      const p = g.picks && g.picks[name];
+      if(!p || !p.team) return `<td class="histcell"><span class="strength">—</span></td>`;
+      const res = g.results && g.results[p.team];
+      const resTag = (resolved && res) ? `<span class="histres ${res==='W'?'go':res==='L'?'danger':'warn'}">${res}</span>` : '';
+      const flags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
+      return `<td class="histcell"><span class="histteam">${p.team}</span>${resTag}${flags?`<span class="strength" style="display:block">${flags}</span>`:''}</td>`;
+    }).join('');
+    return `<tr><td class="num"><b>${n}</b>${resolved?'':' <span class="strength">open</span>'}</td>${cells}</tr>`;
+  }).join('');
+  view.innerHTML = `<div class="panel"><div class="phead"><h2>Pick history</h2>
+      <span class="hint">${gws.length} gameweek${gws.length===1?'':'s'} recorded · scroll sideways for more managers</span></div>
+    <div style="overflow-x:auto"><table class="grid histtable">
+      <thead>${head}</thead><tbody>${rows}</tbody>
+    </table></div>
+    <div class="toolbar"><span class="note">W/D/L shown once a gameweek's resolved · auto = no pick received, auto-assigned · WC/DC = card played that week.</span></div></div>`;
 }
 
 /* --- Rules --- */
