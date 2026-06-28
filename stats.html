@@ -98,6 +98,18 @@
   .ruleslist{margin:8px 0 4px;padding-left:22px;color:var(--muted);font-size:14.5px;line-height:1.6}
   .ruleslist li{margin-bottom:6px}
   .ruleslist b{color:var(--ink)}
+  .histtable{white-space:nowrap;border-collapse:collapse;width:100%}
+  .histtable th,.histtable td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line-soft);font-size:13.5px}
+  .histtable th{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-size:11px;font-weight:600;
+    position:sticky;top:0;background:var(--panel);z-index:1}
+  .histtable td.num{position:sticky;left:0;background:var(--panel);z-index:1}
+  .histcell{min-width:92px}
+  .histteam{font-weight:500}
+  .histres{display:inline-block;font-family:var(--disp);font-size:10px;font-weight:700;
+    border-radius:4px;padding:0 4px;margin-left:5px;vertical-align:middle}
+  .histres.go{color:var(--go);border:1px solid var(--go-dim)}
+  .histres.warn{color:var(--warn);border:1px solid var(--warn)}
+  .histres.danger{color:var(--danger);border:1px solid var(--danger)}
   @media (max-width:480px){
     .row{grid-template-columns:20px 1fr 50px auto}
     .row .wdl, .row.head .h-wdl{display:none}
@@ -123,6 +135,7 @@
   <div class="wrap">
     <nav class="tabs" id="tabs">
       <button data-tab="stats" class="on">Stats</button>
+      <button data-tab="history">History</button>
       <button data-tab="rules">Rules</button>
     </nav>
   </div>
@@ -160,6 +173,7 @@ function cardPip(label, usedFlag, result){
 function render(snap){
   latestSnap = snap;
   if(activeTab==='rules'){ renderRulesPage(); return; }
+  if(activeTab==='history'){ renderHistoryPage(); return; }
   renderStats(snap);
 }
 function renderStats(snap){
@@ -282,11 +296,40 @@ function renderRulesPage(){
 
       </div></div>`;
 }
+function renderHistoryPage(){
+  const snap = latestSnap;
+  const history = (snap && snap.history) || [];
+  if(!history.length){
+    view.innerHTML = `<div class="empty"><div class="big">No picks recorded yet</div>
+      <p>Check back once the admin's published some gameweeks.</p></div>`;
+    return;
+  }
+  const mgrs = (snap.managerOrder && snap.managerOrder.length) ? snap.managerOrder : (snap.managers||[]).map(m=>m.name);
+  const head = `<tr><th>GW</th>${mgrs.map(n=>`<th>${n}</th>`).join('')}</tr>`;
+  const rows = history.map(g=>{
+    const cells = mgrs.map(name=>{
+      const p = g.picks && g.picks[name];
+      if(!p || !p.team) return `<td class="histcell"><span class="note">—</span></td>`;
+      const resTag = (g.resolved && p.result) ? `<span class="histres ${p.result==='W'?'go':p.result==='L'?'danger':'warn'}">${p.result}</span>` : '';
+      const flags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
+      return `<td class="histcell"><span class="histteam">${p.team}</span>${resTag}${flags?`<span class="note" style="display:block">${flags}</span>`:''}</td>`;
+    }).join('');
+    return `<tr><td class="num"><b>${g.gw}</b>${g.resolved?'':' <span class="note">open</span>'}</td>${cells}</tr>`;
+  }).join('');
+  view.innerHTML = `<div class="panel"><div class="phead"><h2>Pick history</h2>
+      <span class="hint">${history.length} gameweek${history.length===1?'':'s'} · scroll sideways for more managers</span></div>
+    <div style="overflow-x:auto"><table class="histtable">
+      <thead>${head}</thead><tbody>${rows}</tbody>
+    </table></div>
+    <div class="legend">W/D/L shown once a gameweek's resolved · auto = no pick received, auto-assigned · WC/DC = card played that week.</div></div>`;
+}
 document.getElementById('tabs').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
   activeTab = b.dataset.tab;
   document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on', x===b));
-  if(activeTab==='rules') renderRulesPage(); else renderStats(latestSnap);
+  if(activeTab==='rules') renderRulesPage();
+  else if(activeTab==='history') renderHistoryPage();
+  else renderStats(latestSnap);
 });
 (function boot(){
   const a=document.createElement('script'); a.src='https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js';
