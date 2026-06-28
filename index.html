@@ -323,7 +323,7 @@
    - Each team usable max 2x per manager (then banned for them).
    - Wildcard (1/season): a Draw costs no life.
    - Drawcard (1/season): betting a draw -> Draw +1 life, Win/Loss -1 life.
-   - Below 0 lives = eliminated (0 is still alive).
+   - 0 or fewer lives = eliminated.
    - No pick received -> first AWAY team in the fixture list they haven't used twice.
    - Tiebreak: most lives -> fewest losses -> lowest summed strength of remaining teams.
    ======================================================================= */
@@ -1011,7 +1011,7 @@ function applyGameweek(n){
     m.used[p.team] = used(m,p.team) + 1;
     if(p.wildcard) m.wildcardUsed = true;
     if(p.drawcard) m.drawcardUsed = true;
-    if(m.lives < 0) m.eliminated = true;
+    if(m.lives <= 0) m.eliminated = true;
   });
   g.status = 'resolved';
   state.currentGw = n + 1;
@@ -1080,7 +1080,7 @@ function renderRules(){
           <tr><td>Team <b>draws</b></td><td class="num">&minus;1 life</td></tr>
           <tr><td>Team <b>loses</b></td><td class="num">&minus;2 lives</td></tr>
         </table>
-        <p>Drop <b>below 0</b> and you're eliminated — 0 is still alive. Whoever's standing last wins.</p>
+        <p>Reach <b>0 lives</b> and you're eliminated. Whoever's standing last wins.</p>
 
         <h3>Team limits</h3>
         <p>Each team can be picked a <b>maximum of ${state.maxPicksPerTeam||2} times</b> by any one manager. Use it up,
