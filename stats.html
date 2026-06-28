@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kamikaze Football · Stats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#080d18; --panel:#101a2c; --panel-2:#16223a; --raised:#1d2c49;
+    --line:#283a5c; --line-soft:#1c2a44;
+    --ink:#eaf1fb; --muted:#8ea0c0; --faint:#5e7095;
+    --go:#19e2a0; --go-dim:#0e7d5c; --warn:#ffc043; --danger:#ff5b7e;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 12px 30px -18px rgba(0,0,0,.8);
+    --disp:'Barlow Condensed', system-ui, sans-serif;
+    --body:'Barlow', system-ui, -apple-system, sans-serif;
+    --num:ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:radial-gradient(1200px 500px at 50% -200px, rgba(25,226,160,.07), transparent 60%), var(--bg);
+    color:var(--ink); font-family:var(--body); font-size:15px; line-height:1.45;
+    -webkit-font-smoothing:antialiased; padding-bottom:48px;
+  }
+  .wrap{max-width:640px; margin:0 auto; padding:0 16px}
+  header.top{border-bottom:1px solid var(--line-soft);
+    background:linear-gradient(180deg, rgba(16,26,44,.9), rgba(8,13,24,.4));
+    position:sticky; top:0; z-index:10; backdrop-filter:blur(8px)}
+  .mast{display:flex; align-items:center; gap:14px; padding:14px 0}
+  .crest{width:34px;height:34px;flex:0 0 auto;filter:drop-shadow(0 0 10px rgba(25,226,160,.3))}
+  .title h1{font-family:var(--disp); font-weight:700; letter-spacing:.04em; margin:0;
+    font-size:21px; line-height:1; text-transform:uppercase}
+  .title h1 .k{color:var(--go)}
+  .title .sub{font-size:11.5px; color:var(--muted); letter-spacing:.12em; text-transform:uppercase; margin-top:3px}
+  .mast .spacer{flex:1}
+  .chip{font-family:var(--disp); text-transform:uppercase; letter-spacing:.06em; font-size:11.5px;
+    padding:5px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted);
+    display:inline-flex; align-items:center; gap:7px; white-space:nowrap}
+  .chip .dot{width:7px;height:7px;border-radius:50%;background:var(--go); box-shadow:0 0 8px var(--go)}
+  main{padding-top:18px}
+  .panel{background:var(--panel);border:1px solid var(--line-soft);border-radius:14px;box-shadow:var(--shadow)}
+  .panel + .panel{margin-top:16px}
+  .phead{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+  .phead h2{font-family:var(--disp);text-transform:uppercase;letter-spacing:.05em;font-size:16px;margin:0}
+  .phead .hint{font-size:12.5px;color:var(--muted);margin-left:auto}
+  .board{padding:6px 8px 12px}
+  .row{display:grid;grid-template-columns:28px 1fr 70px 70px 56px;align-items:center;
+    gap:10px;padding:9px 10px;border-radius:10px}
+  .row.head{color:var(--faint);font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;
+    font-size:11px;padding-bottom:4px}
+  .row.mgr + .row.mgr{border-top:1px solid var(--line-soft)}
+  .rank{font-family:var(--disp);font-weight:700;font-size:17px;color:var(--faint);text-align:center}
+  .rank.lead{color:var(--go)}
+  .who{display:flex;align-items:center;gap:8px;min-width:0}
+  .who .nm{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cards{display:flex;gap:3px}
+  .cpip{font-family:var(--disp);font-size:9.5px;font-weight:700;border-radius:4px;padding:1px 4px;
+    border:1px solid var(--line);color:var(--faint)}
+  .cpip.ok{border-color:var(--go-dim);color:var(--go);background:rgba(25,226,160,.08)}
+  .cpip.bad{border-color:var(--danger);color:var(--danger);background:rgba(255,91,126,.08)}
+  .cpip.used{border-color:var(--line);color:var(--muted);background:var(--panel-2)}
+  .wdl{font-family:var(--num);font-size:12.5px;color:var(--muted);text-align:center}
+  .wdl b{color:var(--ink)}
+  .lifenum{font-family:var(--num);font-size:16px;font-weight:600;text-align:right}
+  .lifenum.go{color:var(--go)} .lifenum.warn{color:var(--warn)} .lifenum.danger{color:var(--danger)}
+  .row.out{opacity:.5}
+  .row.out .nm{text-decoration:line-through}
+  .sep{display:flex;align-items:center;gap:10px;color:var(--faint);font-family:var(--disp);
+    text-transform:uppercase;letter-spacing:.1em;font-size:11px;padding:14px 12px 6px}
+  .sep::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+  .empty{padding:48px 16px;text-align:center;color:var(--muted)}
+  .empty .big{font-family:var(--disp);font-size:18px;color:var(--ink);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+  .legend{padding:12px 16px;font-size:12px;color:var(--faint);border-top:1px solid var(--line-soft)}
+  .footnote{text-align:center;color:var(--faint);font-size:12px;margin-top:18px}
+  @media (max-width:480px){
+    .row{grid-template-columns:22px 1fr 56px 44px}
+    .row .wdl, .row.head .h-wdl{display:none}
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap mast">
+    <svg class="crest" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <path d="M32 4c4 9 13 9 22 11-6 7-4 17-9 25-4 6-9 11-13 19-4-8-9-13-13-19-5-8-3-18-9-25 9-2 18-2 22-11z" stroke="#19e2a0" stroke-width="2.4" stroke-linejoin="round"/>
+      <circle cx="32" cy="30" r="7.5" fill="#0b1626" stroke="#eaf1fb" stroke-width="2"/>
+      <path d="M32 23.5l2.4 1.8-.9 2.9h-3l-.9-2.9z" fill="#eaf1fb"/>
+    </svg>
+    <div class="title">
+      <h1><span class="k">Kamikaze</span> Football</h1>
+      <div class="sub">Player stats</div>
+    </div>
+    <div class="spacer"></div>
+    <span class="chip" id="liveChip"><span class="dot"></span>Live</span>
+  </div>
+</header>
+
+<main class="wrap" id="view">
+  <div class="empty"><div class="big">Loading…</div></div>
+</main>
+
+<script>
+/* ---------- paste the same firebaseConfig as your admin console --------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyCUda8nxOMprPFEiz8YoG3Zd0GvItdUw-Q",
+  authDomain: "kamikaze-football.firebaseapp.com",
+  databaseURL: "https://kamikaze-football-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "kamikaze-football",
+  storageBucket: "kamikaze-football.firebasestorage.app",
+  messagingSenderId: "669421775592",
+  appId: "1:669421775592:web:95a01da6a06059b579b75d",
+  measurementId: "G-7TE11W1DBX"
+};
+const PUBLIC_PATH = 'kamikaze_pl_public';   // matches the admin console's PUBLIC_PATH
+
+const view = document.getElementById('view');
+
+function cardPip(label, usedFlag, result){
+  if(!usedFlag) return `<span class="cpip">${label}</span>`;
+  if(result===undefined || result===null) return `<span class="cpip used">${label}</span>`;
+  const ok = result === 'D';
+  return `<span class="cpip ${ok?'ok':'bad'}">${label}${ok?'✓':'✗'}</span>`;
+}
+
+function render(snap){
+  if(!snap){
+    view.innerHTML = `<div class="empty"><div class="big">No stats published yet</div>
+      <p>Check back once the admin's published the latest standings.</p></div>`;
+    return;
+  }
+  const rows = (snap.managers||[]);
+  let aliveRank = 0, firstDead = true, rowsHtml = '';
+  rowsHtml += `<div class="row head"><span>#</span><span>Manager</span><span class="h-wdl">W·D·L</span><span></span><span>Lives</span></div>`;
+  rows.forEach(m=>{
+    if(m.eliminated && firstDead){ rowsHtml += `<div class="sep">Eliminated</div>`; firstDead=false; }
+    if(!m.eliminated) aliveRank++;
+    const L = m.lives;
+    const lifeCls = L<=2 ? 'danger' : L<=5 ? 'warn' : 'go';
+    rowsHtml += `<div class="row mgr ${m.eliminated?'out':''}">
+      <span class="rank ${(!m.eliminated && aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
+      <span class="who"><span class="nm">${m.name}</span>
+        <span class="cards">${cardPip('WC', m.wildcardUsed, m.wildcardResult)}${cardPip('DC', m.drawcardUsed, m.drawcardResult)}</span>
+      </span>
+      <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
+      <span></span>
+      <span class="lifenum ${lifeCls}">${L}</span>
+    </div>`;
+  });
+  const published = snap.publishedAt ? new Date(snap.publishedAt).toLocaleString('en-GB',
+    {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+  view.innerHTML = `
+    <div class="panel">
+      <div class="phead"><h2>${snap.season||'Standings'}</h2>
+        <span class="hint">Gameweek ${snap.gw||'—'} · ${snap.aliveCount||0}/${snap.totalCount||0} alive</span></div>
+      <div class="board">${rowsHtml}</div>
+      <div class="legend">WC = Wildcard · DC = Drawcard · ✓ successful (drew) · ✗ unsuccessful · outline = not used yet</div>
+    </div>
+    <p class="footnote">Last updated ${published}</p>`;
+}
+
+(function boot(){
+  const a=document.createElement('script'); a.src='https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js';
+  const b=document.createElement('script'); b.src='https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js';
+  a.onload=()=>document.head.appendChild(b);
+  b.onload=()=>{
+    try{
+      firebase.initializeApp(firebaseConfig);
+      const ref = firebase.database().ref(`${PUBLIC_PATH}/current`);
+      ref.on('value', snap=>{ render(snap.exists() ? snap.val() : null); },
+        err=>{ view.innerHTML = `<div class="empty"><div class="big">Can't load stats</div><p>${err.message}</p></div>`; });
+    }catch(e){
+      view.innerHTML = `<div class="empty"><div class="big">Can't load stats</div><p>${e.message}</p></div>`;
+    }
+  };
+  a.onerror = b.onerror = ()=>{ view.innerHTML = `<div class="empty"><div class="big">Can't load stats</div></div>`; };
+  document.head.appendChild(a);
+})();
+</script>
+</body>
+</html>
