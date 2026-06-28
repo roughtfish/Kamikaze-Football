@@ -199,6 +199,12 @@
   .si-cur{font-family:var(--body);font-size:10px;color:var(--go);border:1px solid var(--go-dim);border-radius:4px;
     padding:1px 5px;margin-left:6px;vertical-align:middle;text-transform:uppercase;letter-spacing:.08em}
   .si-sub{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+  .fxbox{background:var(--panel);border:1px solid var(--line-soft);border-radius:14px;margin-bottom:16px;overflow:hidden}
+  .fxbox>summary{padding:13px 16px;cursor:pointer;font-family:var(--disp);text-transform:uppercase;letter-spacing:.05em;font-size:14px;list-style:none}
+  .fxbox>summary::-webkit-details-marker{display:none}
+  .fxbox>summary .note{text-transform:none;letter-spacing:0}
+  .fxpair{display:grid;grid-template-columns:1fr auto 1fr auto;gap:8px;align-items:center}
+  .fxpair .v{color:var(--faint);font-family:var(--disp);text-align:center}
   @media (max-width:680px){
     .row{grid-template-columns:24px 1fr 64px;gap:8px}
     .row .lives .pips{display:none}
@@ -424,6 +430,22 @@ function availableTeams(m){ return state.teams.filter(t=>!isBanned(m,t.name)); }
 function remainingStrengthSum(m){
   return state.teams.filter(t=>!isBanned(m,t.name)).reduce((s,t)=>s+t.strength,0);
 }
+// auto-pick: first away team (in fixture order) the manager hasn't used twice
+function awayTeams(g){ return ((g&&g.fixtures)||[]).map(f=>f&&f.away).filter(Boolean); }
+function autoPickTeam(m,g){
+  for(const away of awayTeams(g)){ if(used(m,away) < state.maxPicksPerTeam) return away; }
+  return null;
+}
+// fill in a team for every alive manager with no selection
+function materializeAutos(g){
+  g.picks = g.picks || {};
+  aliveManagers().forEach(m=>{
+    const p = g.picks[m.name];
+    if(p && p.team) return;                       // real pick already in
+    const auto = autoPickTeam(m,g);
+    if(auto) g.picks[m.name] = {team:auto, auto:true, wildcard:(p&&p.wildcard)||false, drawcard:(p&&p.drawcard)||false};
+  });
+}
 function gw(){ return state.currentGw; }
 function gwObj(n, create){
   state.gameweeks = state.gameweeks || {};
@@ -437,6 +459,63 @@ function sortedStandings(){
     if(a.losses !== b.losses) return a.losses - b.losses;       // fewest losses
     return remainingStrengthSum(a) - remainingStrengthSum(b);   // weakest remaining squad wins
   });
+}
+
+/* ---------- 3b. THESPORTSDB — fixtures & results ------------------------ */
+// Free public key, no signup. v1 API, browser-callable.
+const TSDB_KEY = '123';
+const TSDB_LEAGUE_ID = 4328;   // English Premier League
+// our team name -> TheSportsDB's official name(s), lowercase
+const TSDB_ALIASES = {
+  'Arsenal':['arsenal'], 'Man City':['manchester city'], 'Liverpool':['liverpool'],
+  'Man Utd':['manchester united'], 'Aston Villa':['aston villa'], 'Chelsea':['chelsea'],
+  'Newcastle':['newcastle united'], 'Bournemouth':['afc bournemouth','bournemouth'],
+  'Spurs':['tottenham hotspur','tottenham'], 'Brighton':['brighton and hove albion','brighton & hove albion','brighton'],
+  'Crystal Palace':['crystal palace'], 'Sunderland':['sunderland'], 'Fulham':['fulham'],
+  'Everton':['everton'], 'Brentford':['brentford'], 'Leeds':['leeds united','leeds'],
+  'Notts Forest':['nottingham forest'], 'Ipswich':['ipswich town','ipswich'],
+  'Hull City':['hull city','hull'], 'Coventry':['coventry city','coventry'],
+  'West Ham':['west ham united','west ham'], 'Burnley':['burnley'],
+  'Wolves':['wolverhampton wanderers','wolves']
+};
+function tsdbToOurName(tsdbName){
+  const norm = String(tsdbName||'').trim().toLowerCase();
+  for(const [our,aliases] of Object.entries(TSDB_ALIASES)){
+    if(aliases.includes(norm)) return our;
+  }
+  // loose fallback: either contains the other
+  for(const [our,aliases] of Object.entries(TSDB_ALIASES)){
+    if(aliases.some(a=>norm.includes(a)||a.includes(norm))) return our;
+  }
+  return null;
+}
+function seasonToTSDB(label){
+  const m = /^(\d{2})\/(\d{2})$/.exec(String(label||'').trim());
+  if(!m) return null;
+  const startYear = 2000+(+m[1]);
+  return `${startYear}-${startYear+1}`;
+}
+function outcomeFromScore(myScore, theirScore){
+  if(myScore>theirScore) return 'W'; if(myScore<theirScore) return 'L'; return 'D';
+}
+// returns {events:[{home,away,homeScore,awayScore,finished}], unmatched:Number} or throws
+async function tsdbFetchRound(roundNum){
+  const season = seasonToTSDB(state.season);
+  if(!season) throw new Error(`Can't work out a fixture season from "${state.season}" (expected e.g. "26/27").`);
+  const url = `https://www.thesportsdb.com/api/v1/json/${TSDB_KEY}/eventsround.php?id=${TSDB_LEAGUE_ID}&r=${roundNum}&s=${season}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(`TheSportsDB returned ${res.status}`);
+  const data = await res.json();
+  const raw = data && data.events ? data.events : [];
+  let unmatched = 0;
+  const events = raw.map(e=>{
+    const home = tsdbToOurName(e.strHomeTeam), away = tsdbToOurName(e.strAwayTeam);
+    if(!home || !away){ unmatched++; return null; }
+    const hs = e.intHomeScore, as = e.intAwayScore;
+    const finished = hs!==null && hs!==undefined && as!==null && as!==undefined && hs!=='' && as!=='';
+    return {home, away, homeScore: finished?+hs:null, awayScore: finished?+as:null, finished};
+  }).filter(Boolean);
+  return {events, unmatched, total: raw.length};
 }
 
 /* ---------- 4. RENDER ---------------------------------------------------- */
@@ -511,8 +590,31 @@ function renderPicks(){
     return;
   }
   const alive = aliveManagers();
-  let html = `<div class="panel"><div class="phead"><h2>Enter picks · GW ${n}</h2>
-    <span class="hint">${alive.length} managers in · banned teams are hidden automatically</span></div>`;
+  const allTeamOpts = sel => state.teams.map(t=>`<option value="${t.name}" ${sel===t.name?'selected':''}>${t.name}</option>`).join('');
+  const fx = (g.fixtures && g.fixtures.length) ? g.fixtures : [];
+  const fxRows = fx.map((f,i)=>`
+    <div class="fxpair" data-i="${i}">
+      <select class="fxHome">${`<option value="">home…</option>`+allTeamOpts(f.home)}</select>
+      <span class="v">v</span>
+      <select class="fxAway">${`<option value="">away…</option>`+allTeamOpts(f.away)}</select>
+      <button class="btn ghost fxDel" data-i="${i}" style="padding:7px 11px">×</button>
+    </div>`).join('');
+
+  let html = `<details class="fxbox" ${fx.length?'':'open'}><summary>Fixtures · ${fx.length} set
+      <span class="note">— only needed to auto-fill a missing pick</span></summary>
+    <div style="padding:10px 16px;display:grid;gap:8px">
+      <div class="toolbar" style="padding:0 0 4px;border-top:0">
+        <button class="btn ghost" id="fetchFix">⇣ Fetch GW${n} fixtures (TheSportsDB)</button>
+        <span class="note" id="fixFetchNote"></span>
+      </div>
+      ${fxRows}
+      <div style="display:flex;gap:8px"><button class="btn ghost" id="addFix">+ Add fixture</button>
+        ${fx.length?'<button class="btn ghost" id="clearFix">Clear all</button>':''}</div>
+      <p class="note">Order matters: a no-show gets the first away team they haven't already used twice.</p>
+    </div></details>`;
+
+  html += `<div class="panel"><div class="phead"><h2>Enter picks · GW ${n}</h2>
+    <span class="hint">${alive.length} managers in · blanks auto-fill at resolve</span></div>`;
   alive.forEach(m=>{
     const p = (g.picks && g.picks[m.name]) || {};
     const opts = availableTeams(m).sort((a,b)=>b.strength-a.strength).map(t=>{
@@ -520,13 +622,15 @@ function renderPicks(){
       const sel = p.team===t.name ? 'selected':'';
       return `<option value="${t.name}" ${sel}>${t.name} · ${rem} left</option>`;
     }).join('');
+    const autoT = autoPickTeam(m,g);
+    const autoLabel = autoT ? `↳ no pick (auto: ${autoT})` : `↳ no pick (add fixtures to auto-assign)`;
     const auto = p.team===undefined && p.auto ? 'selected':'';
     const noneSel = (p.team===undefined && !p.auto) ? 'selected':'';
     html += `<div class="pickrow" data-m="${m.name}">
       <span class="nm">${m.name}</span>
       <select class="pkTeam">
-        <option value="" ${noneSel}>— select team —</option>
-        <option value="__AUTO__" ${auto}>↳ no pick (auto: first away team)</option>
+        <option value="" ${noneSel}>— no pick yet${autoT?` (→ ${autoT})`:''} —</option>
+        <option value="__AUTO__" ${auto}>${autoLabel}</option>
         ${opts}
       </select>
       <span class="opts">
@@ -542,6 +646,36 @@ function renderPicks(){
       <button class="btn ghost" id="goResolve">Go to resolve ›</button>
     </div></div>`;
   view.innerHTML = html;
+
+  // fixtures editing (save immediately so auto previews update)
+  function saveFixtures(){
+    g.fixtures = [...view.querySelectorAll('.fxpair')].map(r=>({
+      home:r.querySelector('.fxHome').value, away:r.querySelector('.fxAway').value
+    }));
+    readPicksFromForm(); save(); setTab('picks');
+  }
+  view.querySelectorAll('.fxHome,.fxAway').forEach(s=>s.onchange=saveFixtures);
+  view.querySelectorAll('.fxDel').forEach(b=>b.onclick=()=>{ g.fixtures.splice(+b.dataset.i,1); readPicksFromForm(); save(); setTab('picks'); });
+  const addFix=document.getElementById('addFix');
+  if(addFix) addFix.onclick=()=>{ g.fixtures=(g.fixtures||[]); g.fixtures.push({home:'',away:''}); readPicksFromForm(); save(); setTab('picks'); };
+  const clearFix=document.getElementById('clearFix');
+  if(clearFix) clearFix.onclick=()=>{ if(confirm('Clear all fixtures for this gameweek?')){ g.fixtures=[]; save(); setTab('picks'); } };
+  document.getElementById('fetchFix').onclick = async ()=>{
+    const note=document.getElementById('fixFetchNote'); note.textContent='Fetching…';
+    try{
+      const {events, unmatched, total} = await tsdbFetchRound(n);
+      if(!events.length){
+        note.textContent = total ? `Found ${total} fixtures but couldn't match any team names.` : 'No fixtures found for that round/season yet.';
+        return;
+      }
+      g.fixtures = events.map(e=>({home:e.home, away:e.away}));
+      readPicksFromForm(); save();
+      toast(`Loaded ${events.length} fixtures${unmatched?` (${unmatched} unmatched)`:''}`);
+      setTab('picks');
+    }catch(e){
+      note.textContent = 'Fetch failed: '+e.message;
+    }
+  };
 
   // wildcard & drawcard mutually exclusive in a single week
   view.querySelectorAll('.pickrow').forEach(rowEl=>{
@@ -583,15 +717,19 @@ function renderResolve(){
     document.getElementById('undo').onclick = ()=>undoGameweek(n);
     return;
   }
-  // gather the teams that were picked this week so you only set results that matter
-  readPicksLeniently(g);
+  // fill any missing picks with the first available away team
+  materializeAutos(g);
   const picked = new Set();
   Object.values(g.picks||{}).forEach(p=>{ if(p.team) picked.add(p.team); });
   const teamsToRate = state.teams.filter(t=>picked.has(t.name))
       .sort((a,b)=>b.strength-a.strength);
 
   let html = `<div class="panel"><div class="phead"><h2>Resolve · GW ${n}</h2>
-    <span class="hint">Set how each picked team got on, then apply</span></div>`;
+    <span class="hint">Set how each picked team got on, then apply</span></div>
+    <div class="toolbar" style="border-top:0">
+      <button class="btn ghost" id="fetchRes">⇣ Fetch GW${n} results (TheSportsDB)</button>
+      <span class="note" id="resFetchNote">Fills in Win/Draw/Loss for finished matches automatically.</span>
+    </div>`;
 
   if(teamsToRate.length===0){
     html += `<div class="empty"><div class="big">No picks to resolve yet</div>
@@ -614,12 +752,13 @@ function renderResolve(){
       </span></div>`;
   });
 
-  // any auto-pick managers without an assigned away team -> warn
-  const autoPending = Object.entries(g.picks||{}).filter(([,p])=>p.auto && !p.team).map(([m])=>m);
+  // alive managers still without a team (no pick + nothing left to auto-assign)
+  const noTeam = aliveManagers().filter(m=>{ const p=g.picks[m.name]; return !(p&&p.team); }).map(m=>m.name);
   html += `<div style="padding:12px 16px">`;
-  if(autoPending.length){
-    html += `<div class="warnbox">Auto-pick set for ${autoPending.join(', ')} but no fixture list is loaded,
-      so no away team can be assigned. Either set their team on the picks tab, or they'll be skipped.</div>`;
+  if(noTeam.length){
+    html += `<div class="warnbox">No team for ${noTeam.join(', ')} — no pick was entered and the fixture list
+      couldn't auto-assign one (it's empty, or every listed away team is already used up). Add fixtures on the
+      picks tab or set their pick, otherwise they're skipped this week.</div>`;
   }
   html += `</div>`;
   html += `<div class="toolbar">
@@ -642,6 +781,27 @@ function renderResolve(){
   });
   document.getElementById('applyGw').onclick = ()=>applyGameweek(n);
   document.getElementById('backPicks').onclick = ()=>setTab('picks');
+  document.getElementById('fetchRes').onclick = async ()=>{
+    const note=document.getElementById('resFetchNote'); note.textContent='Fetching…';
+    try{
+      const {events, unmatched, total} = await tsdbFetchRound(n);
+      if(!events.length){
+        note.textContent = total ? `Found ${total} fixtures but couldn't match any team names.` : 'No fixtures found for that round/season yet.';
+        return;
+      }
+      let set=0, pending=0;
+      events.forEach(e=>{
+        if(!e.finished){ pending++; return; }
+        if(picked.has(e.home)){ g.results[e.home] = outcomeFromScore(e.homeScore, e.awayScore); set++; }
+        if(picked.has(e.away)){ g.results[e.away] = outcomeFromScore(e.awayScore, e.homeScore); set++; }
+      });
+      save();
+      toast(`Set ${set} result${set===1?'':'s'}${pending?` · ${pending} not finished yet`:''}${unmatched?` · ${unmatched} unmatched`:''}`);
+      setTab('resolve');
+    }catch(e){
+      note.textContent = 'Fetch failed: '+e.message;
+    }
+  };
   const need = teamsToRate.length, have = teamsToRate.filter(t=>g.results[t.name]).length;
   document.getElementById('resCount').textContent = `${have}/${need} results set`;
   document.getElementById('applyGw').disabled = have<need;
@@ -667,7 +827,7 @@ function renderPreview(g){
     const e = effect(p, res);
     const nl = m.lives + e.delta;
     const cls = e.delta>0?'go':e.delta<0?'danger':'';
-    const flags = [p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
+    const flags = [p.auto?'AUTO':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
     return `<tr>
       <td>${name} ${flags?`<span class="strength">${flags}</span>`:''}</td>
       <td>${p.team}</td>
@@ -683,6 +843,7 @@ function renderPreview(g){
 }
 function applyGameweek(n){
   const g = gwObj(n, true);
+  materializeAutos(g);                       // no-shows get their auto away team
   const picks = Object.entries(g.picks||{}).filter(([,p])=>p.team);
   // snapshot for undo
   g._undo = state.managers.map(m=>({name:m.name, lives:m.lives, wins:m.wins, draws:m.draws,
@@ -911,4 +1072,3 @@ function toast(msg){
 </script>
 </body>
 </html>
-
