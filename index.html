@@ -461,58 +461,49 @@ function sortedStandings(){
   });
 }
 
-/* ---------- 3b. THESPORTSDB — fixtures & results ------------------------ */
-// Free public key, no signup. v1 API, browser-callable.
-const TSDB_KEY = '123';
-const TSDB_LEAGUE_ID = 4328;   // English Premier League
-// our team name -> TheSportsDB's official name(s), lowercase
-const TSDB_ALIASES = {
-  'Arsenal':['arsenal'], 'Man City':['manchester city'], 'Liverpool':['liverpool'],
-  'Man Utd':['manchester united'], 'Aston Villa':['aston villa'], 'Chelsea':['chelsea'],
-  'Newcastle':['newcastle united'], 'Bournemouth':['afc bournemouth','bournemouth'],
-  'Spurs':['tottenham hotspur','tottenham'], 'Brighton':['brighton and hove albion','brighton & hove albion','brighton'],
-  'Crystal Palace':['crystal palace'], 'Sunderland':['sunderland'], 'Fulham':['fulham'],
-  'Everton':['everton'], 'Brentford':['brentford'], 'Leeds':['leeds united','leeds'],
-  'Notts Forest':['nottingham forest'], 'Ipswich':['ipswich town','ipswich'],
-  'Hull City':['hull city','hull'], 'Coventry':['coventry city','coventry'],
-  'West Ham':['west ham united','west ham'], 'Burnley':['burnley'],
-  'Wolves':['wolverhampton wanderers','wolves']
+/* ---------- 3b. FOOTBALL-DATA.ORG (via Cloudflare Worker proxy) --------- */
+// Your Worker relays to football-data.org with the auth token kept server-side.
+const FD_PROXY_URL = 'https://kamikaze-football-proxy.roughtfish.workers.dev/';
+// our team name -> football-data.org's official name(s), lowercase
+const FD_ALIASES = {
+  'Arsenal':['arsenal fc'], 'Man City':['manchester city fc'], 'Liverpool':['liverpool fc'],
+  'Man Utd':['manchester united fc'], 'Aston Villa':['aston villa fc'], 'Chelsea':['chelsea fc'],
+  'Newcastle':['newcastle united fc'], 'Bournemouth':['afc bournemouth'],
+  'Spurs':['tottenham hotspur fc'], 'Brighton':['brighton & hove albion fc','brighton and hove albion fc'],
+  'Crystal Palace':['crystal palace fc'], 'Sunderland':['sunderland afc'], 'Fulham':['fulham fc'],
+  'Everton':['everton fc'], 'Brentford':['brentford fc'], 'Leeds':['leeds united fc'],
+  'Notts Forest':['nottingham forest fc'], 'Ipswich':['ipswich town fc'],
+  'Hull City':['hull city afc'], 'Coventry':['coventry city fc'],
+  'West Ham':['west ham united fc'], 'Burnley':['burnley fc'],
+  'Wolves':['wolverhampton wanderers fc']
 };
-function tsdbToOurName(tsdbName){
-  const norm = String(tsdbName||'').trim().toLowerCase();
-  for(const [our,aliases] of Object.entries(TSDB_ALIASES)){
+function fdToOurName(fdName){
+  const norm = String(fdName||'').trim().toLowerCase();
+  for(const [our,aliases] of Object.entries(FD_ALIASES)){
     if(aliases.includes(norm)) return our;
   }
-  // loose fallback: either contains the other
-  for(const [our,aliases] of Object.entries(TSDB_ALIASES)){
+  for(const [our,aliases] of Object.entries(FD_ALIASES)){
     if(aliases.some(a=>norm.includes(a)||a.includes(norm))) return our;
   }
   return null;
-}
-function seasonToTSDB(label){
-  const m = /^(\d{2})\/(\d{2})$/.exec(String(label||'').trim());
-  if(!m) return null;
-  const startYear = 2000+(+m[1]);
-  return `${startYear}-${startYear+1}`;
 }
 function outcomeFromScore(myScore, theirScore){
   if(myScore>theirScore) return 'W'; if(myScore<theirScore) return 'L'; return 'D';
 }
 // returns {events:[{home,away,homeScore,awayScore,finished}], unmatched:Number} or throws
 async function tsdbFetchRound(roundNum){
-  const season = seasonToTSDB(state.season);
-  if(!season) throw new Error(`Can't work out a fixture season from "${state.season}" (expected e.g. "26/27").`);
-  const url = `https://www.thesportsdb.com/api/v1/json/${TSDB_KEY}/eventsround.php?id=${TSDB_LEAGUE_ID}&r=${roundNum}&s=${season}`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error(`TheSportsDB returned ${res.status}`);
+  const res = await fetch(`${FD_PROXY_URL}?matchday=${roundNum}`);
+  if(!res.ok) throw new Error(`Fixture proxy returned ${res.status}`);
   const data = await res.json();
-  const raw = data && data.events ? data.events : [];
+  if(data.error) throw new Error(data.error);
+  const raw = data && data.matches ? data.matches : [];
   let unmatched = 0;
-  const events = raw.map(e=>{
-    const home = tsdbToOurName(e.strHomeTeam), away = tsdbToOurName(e.strAwayTeam);
+  const events = raw.map(m=>{
+    const home = fdToOurName(m.homeTeam && m.homeTeam.name), away = fdToOurName(m.awayTeam && m.awayTeam.name);
     if(!home || !away){ unmatched++; return null; }
-    const hs = e.intHomeScore, as = e.intAwayScore;
-    const finished = hs!==null && hs!==undefined && as!==null && as!==undefined && hs!=='' && as!=='';
+    const ft = m.score && m.score.fullTime;
+    const hs = ft ? ft.home : null, as = ft ? ft.away : null;
+    const finished = m.status === 'FINISHED' && hs!==null && as!==null;
     return {home, away, homeScore: finished?+hs:null, awayScore: finished?+as:null, finished};
   }).filter(Boolean);
   return {events, unmatched, total: raw.length};
@@ -612,7 +603,7 @@ function renderPicks(){
       <span class="note">— only needed to auto-fill a missing pick</span></summary>
     <div style="padding:10px 16px;display:grid;gap:8px">
       <div class="toolbar" style="padding:0 0 4px;border-top:0">
-        <button class="btn ghost" id="fetchFix">⇣ Fetch GW${n} fixtures (TheSportsDB)</button>
+        <button class="btn ghost" id="fetchFix">⇣ Fetch GW${n} fixtures</button>
         <span class="note" id="fixFetchNote"></span>
       </div>
       ${fxRows}
@@ -742,7 +733,7 @@ function renderResolve(){
   let html = `<div class="panel"><div class="phead"><h2>Resolve · GW ${n}</h2>
     <span class="hint">Set how each picked team got on, then apply</span></div>
     <div class="toolbar" style="border-top:0">
-      <button class="btn ghost" id="fetchRes">⇣ Fetch GW${n} results (TheSportsDB)</button>
+      <button class="btn ghost" id="fetchRes">⇣ Fetch GW${n} results</button>
       <span class="note" id="resFetchNote">Fills in Win/Draw/Loss for finished matches automatically.</span>
     </div>`;
 
