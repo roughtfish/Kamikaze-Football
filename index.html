@@ -518,9 +518,18 @@ function ensureHtml2Canvas(){
 }
 function crestBadge(name, crestUrl){
   if(crestUrl){
-    return `<img src="${crestUrl}" crossorigin="anonymous" class="crestimg" style="width:28px;height:28px;object-fit:contain;flex-shrink:0;" alt="${name||''}">`;
+    const proxied = `${FD_PROXY_URL}?crest=${encodeURIComponent(crestUrl)}`;
+    return `<img src="${proxied}" crossorigin="anonymous" class="crestimg" style="width:28px;height:28px;object-fit:contain;flex-shrink:0;" alt="${name||''}">`;
   }
   return `<div style="width:28px;height:28px;border-radius:50%;background:#16223a;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#8ea0c0;flex-shrink:0;">${teamCode(name)}</div>`;
+}
+function fmtDay(iso){
+  if(!iso) return null;
+  return new Date(iso).toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', timeZone:'Europe/London'});
+}
+function fmtTime(iso){
+  if(!iso) return '';
+  return new Date(iso).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/London'});
 }
 async function shareFixturesImage(gwNum, fixtures){
   if(!fixtures || !fixtures.length){ toast('No fixtures to share yet'); return; }
@@ -529,14 +538,24 @@ async function shareFixturesImage(gwNum, fixtures){
     const card = document.createElement('div');
     card.style.cssText = 'position:fixed;left:-9999px;top:0;width:460px;background:#101a2c;'+
       'font-family:Barlow,system-ui,sans-serif;padding:24px;border-radius:16px;color:#eaf1fb;';
-    const rows = fixtures.map(f=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1c2a44;">
+    let lastDay=null;
+    const rows = fixtures.map(f=>{
+      const day = fmtDay(f.kickoff);
+      let header='';
+      if(day && day!==lastDay){
+        header = `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#19e2a0;padding:${lastDay?'14px':'2px'} 0 6px;">${day}</div>`;
+        lastDay = day;
+      }
+      const time = fmtTime(f.kickoff);
+      return `${header}<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1c2a44;">
         ${crestBadge(f.home, f.homeCrest)}
         <span style="flex:1;font-size:14px;text-align:right;">${f.home||'?'}</span>
         <span style="font-size:11px;color:#5e7095;width:16px;text-align:center;">v</span>
         <span style="flex:1;font-size:14px;">${f.away||'?'}</span>
         ${crestBadge(f.away, f.awayCrest)}
-      </div>`).join('');
+        <span style="font-size:11px;color:#8ea0c0;width:42px;text-align:right;flex-shrink:0;">${time}</span>
+      </div>`;
+    }).join('');
     card.innerHTML = `
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
         <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
@@ -582,7 +601,8 @@ async function tsdbFetchRound(roundNum){
     const finished = m.status === 'FINISHED' && hs!==null && as!==null;
     return {home, away, homeScore: finished?+hs:null, awayScore: finished?+as:null, finished,
       homeCrest: (m.homeTeam && m.homeTeam.crest) || null,
-      awayCrest: (m.awayTeam && m.awayTeam.crest) || null};
+      awayCrest: (m.awayTeam && m.awayTeam.crest) || null,
+      kickoff: m.utcDate || null};
   }).filter(Boolean);
   return {events, unmatched, total: raw.length};
 }
@@ -667,7 +687,7 @@ function renderPicks(){
   if((!g.fixtures || !g.fixtures.length) && !g._fxAutoTried){
     g._fxAutoTried = true;
     tsdbFetchRound(n).then(({events})=>{
-      if(events.length){ g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null})); save(); }
+      if(events.length){ g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null, kickoff:e.kickoff||null})); save(); }
     }).catch(()=>{ /* silent — manual fetch button still there as a fallback */ });
   }
   const alive = aliveManagers();
@@ -750,7 +770,7 @@ function renderPicks(){
         note.textContent = total ? `Found ${total} fixtures but couldn't match any team names.` : 'No fixtures found for that round/season yet.';
         return;
       }
-      g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null}));
+      g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null, kickoff:e.kickoff||null}));
       readPicksFromForm(); save();
       toast(`Loaded ${events.length} fixtures${unmatched?` (${unmatched} unmatched)`:''}`);
       setTab('picks');
@@ -805,7 +825,7 @@ function renderResolve(){
   if((!g.fixtures || !g.fixtures.length) && !g._fxAutoTried){
     g._fxAutoTried = true;
     tsdbFetchRound(n).then(({events})=>{
-      if(events.length){ g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null})); save(); }
+      if(events.length){ g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null, kickoff:e.kickoff||null})); save(); }
     }).catch(()=>{});
   }
   // fill any missing picks with the first available away team
