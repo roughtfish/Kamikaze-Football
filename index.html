@@ -448,9 +448,12 @@ function availableTeams(m){ return state.teams.filter(t=>!isBanned(m,t.name)); }
 // each remaining pick on a team adds its position value — so a team you can
 // still use twice counts twice, once if you've got one shot left on it
 function remainingStrengthSum(m){
+  // same scale as Picked Team Value: 21 minus league position, so Arsenal (pos 1) = 20.
+  // each remaining pick on a team adds its value — so a team you can still use twice
+  // counts twice. Higher total = stronger squad still in reserve.
   return state.teams.filter(t=>!isBanned(m,t.name)).reduce((s,t)=>{
     const left = state.maxPicksPerTeam - used(m,t.name);   // >=1, since banned teams are filtered out
-    return s + t.strength*left;
+    return s + (21 - t.strength)*left;
   },0);
 }
 // auto-pick: first away team (in fixture order) the manager hasn't used twice
@@ -480,23 +483,48 @@ function sortedStandings(){
     if(a.eliminated !== b.eliminated) return a.eliminated?1:-1;
     if(b.lives !== a.lives) return b.lives - a.lives;          // most lives
     if(a.losses !== b.losses) return a.losses - b.losses;       // fewest losses
-    return remainingStrengthSum(a) - remainingStrengthSum(b);   // weakest remaining squad wins
+    return remainingStrengthSum(b) - remainingStrengthSum(a);   // strongest remaining squad wins (highest value)
   });
+}
+
+// "Picked team value": for each resolved gameweek, score that week's pick by how
+// strong the picked team was on the table *at the time* (using the locked-in
+// tableSnapshot, not the current table) — 21 minus league position, so 1st = 20
+// points, 20th = 1 point. Summed across the season. {total, count} — count is how
+// many qualifying gameweeks went into it, so the stats page can hide it until
+// someone's actually got a result on the board.
+function pickedTeamValue(name){
+  let total=0, count=0;
+  Object.values(state.gameweeks||{}).forEach(g=>{
+    if(g.status!=='resolved' || !g.tableSnapshot) return;
+    const p = g.picks && g.picks[name];
+    if(!p || !p.team) return;
+    if(!g.results || !g.results[p.team]) return;
+    const snap = g.tableSnapshot.find(t=>t.name===p.team);
+    if(!snap) return;
+    total += 21 - snap.strength;
+    count++;
+  });
+  return {total, count};
 }
 
 // builds a clean, curated snapshot (no admin/internal fields) and pushes it
 // to the public-readable path — players read this, never the real season data
 async function publishPublicStats(){
   if(!fbRef) throw new Error("Not connected to Firebase — can't publish without it");
-  const rows = sortedStandings().map((m,i)=>({
-    name: m.name,
-    lives: m.lives,
-    eliminated: !!m.eliminated,
-    wins: m.wins, draws: m.draws, losses: m.losses,
-    wildcardUsed: !!m.wildcardUsed, wildcardResult: m.wildcardResult || null,
-    drawcardUsed: !!m.drawcardUsed, drawcardResult: m.drawcardResult || null,
-    bannedCount: state.teams.filter(t=>isBanned(m,t.name)).length
-  }));
+  const rows = sortedStandings().map((m,i)=>{
+    const ptv = pickedTeamValue(m.name);
+    return {
+      name: m.name,
+      lives: m.lives,
+      eliminated: !!m.eliminated,
+      wins: m.wins, draws: m.draws, losses: m.losses,
+      wildcardUsed: !!m.wildcardUsed, wildcardResult: m.wildcardResult || null,
+      drawcardUsed: !!m.drawcardUsed, drawcardResult: m.drawcardResult || null,
+      bannedCount: state.teams.filter(t=>isBanned(m,t.name)).length,
+      pickedTeamValue: ptv.total, pickedTeamValueCount: ptv.count
+    };
+  });
   const snapshot = {
     season: state.season || '',
     gw: gw(),
@@ -1097,6 +1125,11 @@ function renderPreview(g){
 function applyGameweek(n){
   const g = gwObj(n, true);
   materializeAutos(g);                       // no-shows get their auto away team
+  // lock in the league table as it stood entering this gameweek, once — re-resolving
+  // or undoing later never overwrites it, so "picked team value" stays historically honest
+  if(!g.tableSnapshot){
+    g.tableSnapshot = state.teams.map(t=>({name:t.name, strength:t.strength}));
+  }
   const picks = Object.entries(g.picks||{}).filter(([,p])=>p.team);
   // snapshot for undo
   g._undo = state.managers.map(m=>({name:m.name, lives:m.lives, wins:m.wins, draws:m.draws,
@@ -1154,7 +1187,7 @@ function renderLimits(){
       <td class="num">${remainingStrengthSum(m)}</td></tr>`;
   });
   html += `</tbody></table></div>
-    <div class="toolbar"><span class="note">“Squad str” = sum of the live league position of every team a manager hasn't already used twice — counted once per remaining pick, so a team you can still use twice counts twice. Lowest wins the final tiebreak: it means they've still got strong teams genuinely in reserve, matching the rulebook's tiebreak.</span></div></div>`;
+    <div class="toolbar"><span class="note">“Squad str” = sum of each remaining team's value (21 minus its live league position, so 1st place = 20) — counted once per remaining pick, so a team you can still use twice counts twice. Highest wins the final tiebreak: it means they've still got the strongest teams genuinely in reserve. Same scale as “Picked team value” on the player stats page.</span></div></div>`;
   view.innerHTML = html;
   document.getElementById('fetchTable').onclick = async ()=>{
     const note=document.getElementById('tableFetchNote'); note.textContent='Fetching…';
@@ -1213,9 +1246,11 @@ function renderRules(){
           <li>Last manager standing wins outright.</li>
           <li>Otherwise, most lives remaining.</li>
           <li>Still tied? Fewest losses.</li>
-          <li>Still tied? Lowest summed <b>league position</b> of each manager's remaining (still-pickable) teams —
-          i.e. whoever's still got the strongest teams in reserve. Each remaining pick on a team counts separately,
-          so a team you can still use twice counts twice toward the total.</li>
+          <li>Still tied? Highest summed <b>value</b> of each manager's remaining (still-pickable) teams — each
+          team's value is 21 minus its live league position (1st place = 20 points), same scale used for "Picked
+          team value" on the player stats page. Each remaining pick on a team counts separately, so a team you can
+          still use twice counts twice toward the total. Highest total wins — whoever's still got the strongest
+          teams genuinely in reserve.</li>
         </ol>
 
       </div></div>`;
