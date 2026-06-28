@@ -444,13 +444,12 @@ const aliveManagers = () => state.managers.filter(m=>!m.eliminated);
 function used(m,t){ return (m.used && m.used[t]) || 0; }
 function isBanned(m,t){ return used(m,t) >= state.maxPicksPerTeam; }
 function availableTeams(m){ return state.teams.filter(t=>!isBanned(m,t.name)); }
-// a team with only one use left is half as valuable a reserve as a fresh one,
-// so it counts double toward the tiebreak total (weight = maxPicks / usesLeft)
+// each remaining pick on a team adds its position value — so a team you can
+// still use twice counts twice, once if you've got one shot left on it
 function remainingStrengthSum(m){
   return state.teams.filter(t=>!isBanned(m,t.name)).reduce((s,t)=>{
     const left = state.maxPicksPerTeam - used(m,t.name);   // >=1, since banned teams are filtered out
-    const weight = state.maxPicksPerTeam / left;
-    return s + t.strength*weight;
+    return s + t.strength*left;
   },0);
 }
 // auto-pick: first away team (in fixture order) the manager hasn't used twice
@@ -1051,7 +1050,7 @@ function renderLimits(){
       <td class="num">${remainingStrengthSum(m)}</td></tr>`;
   });
   html += `</tbody></table></div>
-    <div class="toolbar"><span class="note">“Squad str” = sum of the live league position of every team a manager hasn't already used twice — a team with only one use left counts double, since it's half as useful a reserve as a fresh one. Lowest wins the final tiebreak: it means they've still got strong teams genuinely in reserve, matching the rulebook's tiebreak.</span></div></div>`;
+    <div class="toolbar"><span class="note">“Squad str” = sum of the live league position of every team a manager hasn't already used twice — counted once per remaining pick, so a team you can still use twice counts twice. Lowest wins the final tiebreak: it means they've still got strong teams genuinely in reserve, matching the rulebook's tiebreak.</span></div></div>`;
   view.innerHTML = html;
   document.getElementById('fetchTable').onclick = async ()=>{
     const note=document.getElementById('tableFetchNote'); note.textContent='Fetching…';
@@ -1111,8 +1110,8 @@ function renderRules(){
           <li>Otherwise, most lives remaining.</li>
           <li>Still tied? Fewest losses.</li>
           <li>Still tied? Lowest summed <b>league position</b> of each manager's remaining (still-pickable) teams —
-          i.e. whoever's still got the strongest teams in reserve. A team with only one use left counts double
-          toward that total, since it's half as useful a reserve as a fresh one.</li>
+          i.e. whoever's still got the strongest teams in reserve. Each remaining pick on a team counts separately,
+          so a team you can still use twice counts twice toward the total.</li>
         </ol>
 
       </div></div>`;
