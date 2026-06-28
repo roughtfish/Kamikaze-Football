@@ -382,7 +382,7 @@ async function initStore(){
     root = migrate(null); activeId = root.active; state = root.seasons[activeId];
     dataLive(false, configured ? 'Firebase unreachable · local' : 'Local data (no sync)');
     stateLoaded = true;
-    showChooser(); render(); return;
+    render(); return;
   }
   try{
     firebase.initializeApp(firebaseConfig);
@@ -393,7 +393,7 @@ async function initStore(){
   }catch(e){
     console.warn('Firebase init failed, staying local:', e);
     root = migrate(null); activeId = root.active; state = root.seasons[activeId];
-    dataLive(false, 'Firebase error · local'); showChooser();
+    dataLive(false, 'Firebase error · local');
     stateLoaded = true;
   }
   render();
@@ -416,7 +416,14 @@ async function connectDb(){
       }
     });
     dataLive(true, 'Firebase · synced');
-    showChooser();                 // let me pick which season to work on
+    // resume whatever season was active last time, rather than making you choose
+    // again on every reload — the chooser is still one tap away on the Season tab
+    if(root.active && root.seasons && root.seasons[root.active]){
+      activeId = root.active; state = root.seasons[root.active]; stateLoaded = true;
+      render();
+    } else {
+      showChooser();   // no active season on record — genuinely need a choice here
+    }
   }catch(e){
     console.warn('DB connect failed:', e);
     dbConnected=false;
