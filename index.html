@@ -381,6 +381,7 @@ async function initStore(){
   if(!configured || typeof firebase === 'undefined'){
     root = migrate(null); activeId = root.active; state = root.seasons[activeId];
     dataLive(false, configured ? 'Firebase unreachable · local' : 'Local data (no sync)');
+    stateLoaded = true;
     showChooser(); render(); return;
   }
   try{
@@ -393,6 +394,7 @@ async function initStore(){
     console.warn('Firebase init failed, staying local:', e);
     root = migrate(null); activeId = root.active; state = root.seasons[activeId];
     dataLive(false, 'Firebase error · local'); showChooser();
+    stateLoaded = true;
   }
   render();
 }
@@ -441,7 +443,12 @@ async function signIn(){
   }
 }
 function signOutNow(){ if(typeof firebase!=='undefined' && firebase.auth){ dbConnected=false; firebase.auth().signOut(); } }
+let stateLoaded = false;   // true only once this session has loaded real season data — blocks saves before then
 function save(){
+  if(!stateLoaded){
+    console.warn('save() blocked — no season loaded into this session yet, refusing to write stale/placeholder data');
+    return;
+  }
   if(activeId && root && root.seasons){ root.seasons[activeId] = state; }
   if(fbRef && activeId){
     firebase.database().ref(`${DB_PATH}/seasons/${activeId}`).set(state).catch(e=>console.warn('save failed', e));
@@ -1520,7 +1527,7 @@ function deleteSeason(id){
 }
 function loadSeason(id){
   if(!root || !root.seasons || !root.seasons[id]) return;
-  activeId=id; state=root.seasons[id]; root.active=id;
+  activeId=id; state=root.seasons[id]; root.active=id; stateLoaded=true;
   if(fbRef){ firebase.database().ref(`${DB_PATH}/active`).set(id).catch(()=>{}); }
   hideChooser(); setTab('standings'); toast(`Loaded ${state.season||id}`);
   autoPublishStats();
@@ -1535,7 +1542,7 @@ function createSeason(label, names){
   };
   const id = uniqueId(label);
   root = root || {seasons:{}}; root.seasons = root.seasons || {};
-  root.seasons[id]=fresh; root.active=id; activeId=id; state=fresh;
+  root.seasons[id]=fresh; root.active=id; activeId=id; state=fresh; stateLoaded=true;
   if(fbRef){
     firebase.database().ref(`${DB_PATH}/seasons/${id}`).set(fresh).catch(e=>console.warn(e));
     firebase.database().ref(`${DB_PATH}/active`).set(id).catch(()=>{});
