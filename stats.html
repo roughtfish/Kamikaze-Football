@@ -151,6 +151,28 @@ function render(snap){
   });
   const published = snap.publishedAt ? new Date(snap.publishedAt).toLocaleString('en-GB',
     {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+
+  // Picked Team Value — only managers with at least one qualifying gameweek
+  const ptvRows = rows.filter(m=>(m.pickedTeamValueCount||0) > 0)
+    .sort((a,b)=>(b.pickedTeamValue||0)-(a.pickedTeamValue||0));
+  let ptvHtml = '';
+  if(ptvRows.length){
+    ptvHtml = `<div class="panel">
+      <div class="phead"><h2>Picked team value</h2>
+        <span class="hint">Strength of teams picked, scored against the table at the time</span></div>
+      <div class="board">
+        <div class="row head" style="grid-template-columns:28px 1fr 80px"><span>#</span><span>Manager</span><span style="text-align:right">Value</span></div>
+        ${ptvRows.map((m,i)=>`
+          <div class="row mgr" style="grid-template-columns:28px 1fr 80px">
+            <span class="rank ${i===0?'lead':''}">${i+1}</span>
+            <span class="who"><span class="nm">${m.name}</span></span>
+            <span class="lifenum go" style="font-size:15px">${m.pickedTeamValue}</span>
+          </div>`).join('')}
+      </div>
+      <div class="legend">Each pick scores 21 minus the picked team's league position at that gameweek (1st = 20pts, 20th = 1pt), summed across the season. Higher = stronger picks on average.</div>
+    </div>`;
+  }
+
   view.innerHTML = `
     <div class="panel">
       <div class="phead"><h2>${snap.season||'Standings'}</h2>
@@ -158,6 +180,7 @@ function render(snap){
       <div class="board">${rowsHtml}</div>
       <div class="legend">WC = Wildcard · DC = Drawcard · ✓ successful (drew) · ✗ unsuccessful · outline = not used yet</div>
     </div>
+    ${ptvHtml}
     <p class="footnote">Last updated ${published}</p>`;
 }
 
