@@ -530,6 +530,8 @@ async function publishPublicStats(){
     gw: gw(),
     aliveCount: aliveManagers().length,
     totalCount: state.managers.length,
+    startingLives: state.startingLives || 15,
+    maxPicksPerTeam: state.maxPicksPerTeam || 2,
     managers: rows,
     publishedAt: new Date().toISOString()
   };
