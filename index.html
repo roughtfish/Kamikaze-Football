@@ -1180,20 +1180,28 @@ function effect(p, result){
   return {delta:-2, outcome:'L', note:''};
 }
 function renderPreview(g){
+  const flagBadge = (label, kind)=>{
+    const color = kind==='auto' ? 'var(--muted)' : kind==='wild' ? 'var(--go)' : 'var(--warn)';
+    const border = kind==='auto' ? 'var(--line)' : kind==='wild' ? 'var(--go-dim)' : 'var(--warn)';
+    return `<span style="display:inline-block;font-family:var(--disp);font-size:10px;font-weight:700;
+      letter-spacing:.04em;color:${color};border:1px solid ${border};border-radius:4px;
+      padding:1px 5px;margin-left:6px;vertical-align:middle;">${label}</span>`;
+  };
   const rows = Object.entries(g.picks||{}).filter(([,p])=>p.team).map(([name,p])=>{
     const m = state.managers.find(x=>x.name===name);
-    const flags = [p.auto?'AUTO':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
-    const nameCell = `${name} ${flags?`<span class="strength">${flags}</span>`:''}`;
+    const badges = (p.auto?flagBadge('AUTO','auto'):'') + (p.wildcard?flagBadge('WC','wild'):'') + (p.drawcard?flagBadge('DC','draw'):'');
+    const nameCell = `${name}${badges}`;
     const res = g.results[p.team];
     if(!res) return `<tr><td>${nameCell}</td><td>${p.team}</td><td class="num">—</td><td class="num">—</td><td>${m.lives}</td></tr>`;
     const e = effect(p, res);
     const nl = m.lives + e.delta;
     const cls = e.delta>0?'go':e.delta<0?'danger':'';
+    const noteHtml = e.note ? `<div style="font-size:11px;color:var(--${e.delta<0?'danger':'go'});margin-top:2px;">${e.note}</div>` : '';
     return `<tr>
       <td>${nameCell}</td>
       <td>${p.team}</td>
       <td class="num">${res}</td>
-      <td class="num" style="color:var(--${cls||'muted'})">${e.delta>0?'+':''}${e.delta}</td>
+      <td class="num" style="color:var(--${cls||'muted'})">${e.delta>0?'+':''}${e.delta}${noteHtml}</td>
       <td class="num">${m.lives} → <b style="color:var(--${nl<0?'danger':nl<=2?'warn':'go'})">${nl}</b>${nl<0?' ☠':''}</td>
     </tr>`;
   }).join('');
