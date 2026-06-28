@@ -75,6 +75,25 @@
   .empty .big{font-family:var(--disp);font-size:18px;color:var(--ink);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
   .legend{padding:12px 16px;font-size:12px;color:var(--faint);border-top:1px solid var(--line-soft)}
   .footnote{text-align:center;color:var(--faint);font-size:12px;margin-top:18px}
+  nav.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line-soft)}
+  nav.tabs button{background:none;border:0;color:var(--muted);font-family:var(--disp);
+    text-transform:uppercase;letter-spacing:.06em;font-size:14px;font-weight:600;
+    padding:10px 14px;cursor:pointer;border-bottom:2px solid transparent}
+  nav.tabs button.on{color:var(--ink);border-bottom-color:var(--go)}
+  .rulesbody{padding:6px 18px 18px;max-width:640px}
+  .rulesbody h3{font-family:var(--disp);text-transform:uppercase;letter-spacing:.04em;font-size:16px;
+    margin:22px 0 6px;color:var(--ink)}
+  .rulesbody h3:first-child{margin-top:6px}
+  .rulesbody p{margin:6px 0;color:var(--muted);font-size:14.5px;line-height:1.55}
+  .rulesbody b{color:var(--ink)}
+  .rulestag{font-family:var(--disp);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--go);border:1px solid var(--go-dim);border-radius:5px;padding:1px 7px;margin-left:8px;vertical-align:middle}
+  .rulestable{margin:8px 0;width:auto;max-width:360px;border-collapse:collapse}
+  .rulestable td{border-bottom:1px solid var(--line-soft);padding:7px 16px 7px 0;font-size:14px}
+  .rulestable td.num{font-family:var(--num);text-align:right;padding-right:0;color:var(--ink)}
+  .ruleslist{margin:8px 0 4px;padding-left:22px;color:var(--muted);font-size:14.5px;line-height:1.6}
+  .ruleslist li{margin-bottom:6px}
+  .ruleslist b{color:var(--ink)}
   @media (max-width:480px){
     .row{grid-template-columns:22px 1fr 56px 44px}
     .row .wdl, .row.head .h-wdl{display:none}
@@ -96,6 +115,12 @@
     <div class="spacer"></div>
     <span class="chip" id="liveChip"><span class="dot"></span>Live</span>
   </div>
+  <div class="wrap">
+    <nav class="tabs" id="tabs">
+      <button data-tab="stats" class="on">Stats</button>
+      <button data-tab="rules">Rules</button>
+    </nav>
+  </div>
 </header>
 
 <main class="wrap" id="view">
@@ -103,6 +128,8 @@
 </main>
 
 <script>
+let latestSnap = null;
+let activeTab = 'stats';
 /* ---------- paste the same firebaseConfig as your admin console --------- */
 const firebaseConfig = {
   apiKey: "AIzaSyCUda8nxOMprPFEiz8YoG3Zd0GvItdUw-Q",
@@ -126,6 +153,11 @@ function cardPip(label, usedFlag, result){
 }
 
 function render(snap){
+  latestSnap = snap;
+  if(activeTab==='rules'){ renderRulesPage(); return; }
+  renderStats(snap);
+}
+function renderStats(snap){
   if(!snap){
     view.innerHTML = `<div class="empty"><div class="big">No stats published yet</div>
       <p>Check back once the admin's published the latest standings.</p></div>`;
@@ -184,6 +216,67 @@ function render(snap){
     <p class="footnote">Last updated ${published}</p>`;
 }
 
+function renderRulesPage(){
+  const lives = (latestSnap && latestSnap.startingLives) || 15;
+  const maxPicks = (latestSnap && latestSnap.maxPicksPerTeam) || 2;
+  view.innerHTML = `
+    <div class="panel"><div class="phead"><h2>How it works</h2>
+      <span class="hint">${(latestSnap&&latestSnap.season)||''} · ${lives} lives · max ${maxPicks} picks per team</span></div>
+      <div class="rulesbody">
+
+        <h3>The basics</h3>
+        <p>Every manager starts the season with <b>${lives} lives</b>. Each gameweek, you pick one
+        Premier League team to win. What happens to your lives depends on the result:</p>
+        <table class="grid rulestable">
+          <tr><td>Team <b>wins</b></td><td class="num">No life lost</td></tr>
+          <tr><td>Team <b>draws</b></td><td class="num">&minus;1 life</td></tr>
+          <tr><td>Team <b>loses</b></td><td class="num">&minus;2 lives</td></tr>
+        </table>
+        <p>Reach <b>0 lives</b> and you're eliminated. Whoever's standing last wins.</p>
+
+        <h3>Team limits</h3>
+        <p>Each team can be picked a <b>maximum of ${maxPicks} times</b> by any one manager. Use it up,
+        and it's banned for you for the rest of the season — though other managers can still pick it.</p>
+
+        <h3>Wildcard <span class="rulestag">once per season</span></h3>
+        <p>Play it alongside a pick to insure against a draw. If your team draws, you keep the life you'd otherwise
+        lose. If it wins or loses, the Wildcard has no effect — and it's gone either way.</p>
+
+        <h3>Drawcard <span class="rulestag">once per season</span></h3>
+        <p>A side bet on the result being a draw, played alongside your normal pick:</p>
+        <table class="grid rulestable">
+          <tr><td>Game <b>draws</b></td><td class="num">+1 life</td></tr>
+          <tr><td>Game is a <b>win or loss</b></td><td class="num">&minus;1 life</td></tr>
+        </table>
+        <p>It's used the moment you play it, whatever the result.</p>
+        <p class="note">Wildcard and Drawcard can't both be played on the same pick in the same week.</p>
+
+        <h3>Missed picks</h3>
+        <p>If a manager doesn't get a pick in before the deadline, they're not skipped — they're auto-assigned the
+        <b>first away team</b> on that gameweek's fixture list that they haven't already used twice. If their first
+        away team is banned, it moves to the next one, and so on down the list.</p>
+
+        <h3>Final tiebreak</h3>
+        <p>If it comes down to a tie at the end of the season, it's settled in this order:</p>
+        <ol class="ruleslist">
+          <li>Last manager standing wins outright.</li>
+          <li>Otherwise, most lives remaining.</li>
+          <li>Still tied? Fewest losses.</li>
+          <li>Still tied? Highest summed <b>value</b> of each manager's remaining (still-pickable) teams — each
+          team's value is 21 minus its live league position (1st place = 20 points), the same scale as "Picked
+          team value" above. Each remaining pick on a team counts separately, so a team you can still use twice
+          counts twice toward the total. Highest total wins — whoever's still got the strongest teams genuinely
+          in reserve.</li>
+        </ol>
+
+      </div></div>`;
+}
+document.getElementById('tabs').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  activeTab = b.dataset.tab;
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on', x===b));
+  if(activeTab==='rules') renderRulesPage(); else renderStats(latestSnap);
+});
 (function boot(){
   const a=document.createElement('script'); a.src='https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js';
   const b=document.createElement('script'); b.src='https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js';
