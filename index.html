@@ -666,6 +666,71 @@ async function shareFixturesImage(gwNum, fixtures){
     toast('Image share failed: '+e.message);
   }
 }
+const PIE_COLORS = ['#19e2a0','#ffc043','#5b8def','#ff5b7e','#a78bfa','#f97316','#34d399','#fbbf24','#60a5fa','#f472b6','#2dd4bf','#fb7185','#facc15','#818cf8','#4ade80'];
+// approximate primary kit colours — several clubs share a colour family (lots of
+// reds, a couple of blues), shaded slightly apart where possible; the legend
+// labels are what actually disambiguates when two slices land close in hue
+const TEAM_COLORS = {
+  'Arsenal':'#EF0107', 'Aston Villa':'#670E36', 'Bournemouth':'#B91F24',
+  'Brentford':'#E30613', 'Brighton':'#0057B8', 'Burnley':'#6C1D45',
+  'Chelsea':'#034694', 'Coventry':'#78D0F2', 'Crystal Palace':'#1B458F',
+  'Everton':'#003399', 'Fulham':'#5C5C5C', 'Hull City':'#F18A01',
+  'Ipswich':'#1560BD', 'Leeds':'#FFCD00', 'Liverpool':'#C8102E',
+  'Man City':'#6CABDD', 'Man Utd':'#DA291C', 'Newcastle':'#9DAFC5',
+  'Notts Forest':'#E2231A', 'Spurs':'#132257', 'Sunderland':'#EB172B',
+  'West Ham':'#7A263A', 'Wolves':'#FDB913'
+};
+function teamColor(name, i){ return TEAM_COLORS[name] || PIE_COLORS[i % PIE_COLORS.length]; }
+async function shareGwPicksPie(gwNum, g){
+  try{
+    const byTeam = {};
+    Object.entries(g.picks||{}).forEach(([name,p])=>{
+      if(!p || !p.team) return;
+      (byTeam[p.team] = byTeam[p.team] || []).push({name, auto: !!p.auto});
+    });
+    const entries = Object.entries(byTeam).map(([team,players])=>({team, players, count:players.length}))
+      .sort((a,b)=>b.count-a.count);
+    if(!entries.length){ toast('No picks to chart yet'); return; }
+    const total = entries.reduce((s,e)=>s+e.count,0);
+
+    let cumulative = 0;
+    const stops = entries.map((e,i)=>{
+      const pct = e.count/total*100;
+      const color = teamColor(e.team, i);
+      const stop = `${color} ${cumulative}% ${cumulative+pct}%`;
+      cumulative += pct;
+      return stop;
+    }).join(', ');
+
+    const legend = entries.map((e,i)=>{
+      const color = teamColor(e.team, i);
+      const names = e.players.map(p=>p.auto ? `${p.name} (auto)` : p.name).join(', ');
+      return `<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid #1c2a44;">
+        <span style="width:11px;height:11px;border-radius:50%;background:${color};margin-top:3px;flex-shrink:0;"></span>
+        <span style="flex:1;font-size:13px;">
+          <span style="color:#eaf1fb;font-weight:600;">${e.team}</span>
+          <span style="color:#8ea0c0;"> · ${e.count} pick${e.count===1?'':'s'}</span><br>
+          <span style="color:#5e7095;font-size:12px;">${names}</span>
+        </span>
+      </div>`;
+    }).join('');
+
+    const html = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
+        <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
+      </div>
+      <div style="font-size:13px;color:#8ea0c0;margin-bottom:16px;">Gameweek ${gwNum} picks · ${total} total</div>
+      <div style="display:flex;justify-content:center;margin-bottom:16px;">
+        <div style="width:200px;height:200px;border-radius:50%;background:conic-gradient(${stops});box-shadow:0 0 0 1px #1c2a44 inset;"></div>
+      </div>
+      <div style="border-top:1px solid #1c2a44;">${legend}</div>`;
+    await exportCardAsShare(html, `kamikaze-gw${gwNum}-picks-chart.png`, `Gameweek ${gwNum} picks`);
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
+}
 async function shareStandingsImage(){
   function cardBadge(label, usedFlag, result){
     if(!usedFlag) return `<span style="font-size:9px;font-weight:600;color:#5e7095;border:1px solid #283a5c;border-radius:4px;padding:1px 4px;">${label}</span>`;
@@ -990,8 +1055,10 @@ function renderResolve(){
     view.innerHTML = `<div class="panel"><div class="phead"><h2>Resolve · GW ${n}</h2></div>
       <div class="okbox" style="margin:16px">Gameweek ${n} has been resolved and applied to the table.</div>
       <div class="toolbar"><button class="btn warn" id="undo">Undo this gameweek</button>
+      <button class="btn ghost" id="sharePie">Share picks chart</button>
       <span class="note">Reverses the life/record changes from GW ${n}.</span></div></div>`;
     document.getElementById('undo').onclick = ()=>undoGameweek(n);
+    document.getElementById('sharePie').onclick = ()=>shareGwPicksPie(n, g);
     return;
   }
   // safety net: if you've jumped here without visiting Picks, make sure fixtures exist first
@@ -1012,6 +1079,7 @@ function renderResolve(){
     <span class="hint">Set how each picked team got on, then apply</span></div>
     <div class="toolbar" style="border-top:0">
       <button class="btn ghost" id="fetchRes">⇣ Fetch GW${n} results</button>
+      <button class="btn ghost" id="sharePieOpen">Share picks chart</button>
       <span class="note" id="resFetchNote">Fills in Win/Draw/Loss for finished matches automatically.</span>
     </div>`;
 
@@ -1089,6 +1157,7 @@ function renderResolve(){
   const need = teamsToRate.length, have = teamsToRate.filter(t=>g.results[t.name]).length;
   document.getElementById('resCount').textContent = `${have}/${need} results set`;
   document.getElementById('applyGw').disabled = have<need;
+  document.getElementById('sharePieOpen').onclick = ()=>shareGwPicksPie(n, g);
 }
 function readPicksLeniently(g){ g.picks = g.picks || {}; } // picks already saved via savePicks
 
