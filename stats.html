@@ -46,8 +46,8 @@
   .phead{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
   .phead h2{font-family:var(--disp);text-transform:uppercase;letter-spacing:.05em;font-size:16px;margin:0}
   .phead .hint{font-size:12.5px;color:var(--muted);margin-left:auto}
-  .board{padding:6px 8px 12px}
-  .row{display:grid;grid-template-columns:28px 1fr 70px 70px 56px;align-items:center;
+  .board{padding:6px 8px 12px; overflow-x:auto}
+  .row{display:grid;grid-template-columns:28px 1fr 60px auto;align-items:center;
     gap:10px;padding:9px 10px;border-radius:10px}
   .row.head{color:var(--faint);font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;
     font-size:11px;padding-bottom:4px}
@@ -66,6 +66,10 @@
   .wdl b{color:var(--ink)}
   .lifenum{font-family:var(--num);font-size:16px;font-weight:600;text-align:right}
   .lifenum.go{color:var(--go)} .lifenum.warn{color:var(--warn)} .lifenum.danger{color:var(--danger)}
+  .lives{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+  .pips{display:flex;gap:2px;flex-wrap:nowrap}
+  .pip{width:5px;height:14px;border-radius:2px;background:var(--line)}
+  .pip.on{background:var(--go)} .pip.warn{background:var(--warn)} .pip.danger{background:var(--danger)}
   .row.out{opacity:.5}
   .row.out .nm{text-decoration:line-through}
   .sep{display:flex;align-items:center;gap:10px;color:var(--faint);font-family:var(--disp);
@@ -95,8 +99,9 @@
   .ruleslist li{margin-bottom:6px}
   .ruleslist b{color:var(--ink)}
   @media (max-width:480px){
-    .row{grid-template-columns:22px 1fr 56px 44px}
+    .row{grid-template-columns:20px 1fr 50px auto}
     .row .wdl, .row.head .h-wdl{display:none}
+    .pip{width:4px;height:13px}
   }
 </style>
 </head>
@@ -163,22 +168,28 @@ function renderStats(snap){
       <p>Check back once the admin's published the latest standings.</p></div>`;
     return;
   }
+  const startingLives = (latestSnap && latestSnap.startingLives) || 15;
+  function pip(i, lives){
+    let cls='pip';
+    if(i<lives){ cls += lives<=2 ? ' danger' : lives<=5 ? ' warn' : ' on'; }
+    return `<span class="${cls}"></span>`;
+  }
   const rows = (snap.managers||[]);
   let aliveRank = 0, firstDead = true, rowsHtml = '';
-  rowsHtml += `<div class="row head"><span>#</span><span>Manager</span><span class="h-wdl">W·D·L</span><span></span><span>Lives</span></div>`;
+  rowsHtml += `<div class="row head"><span>#</span><span>Manager</span><span class="h-wdl">W·D·L</span><span style="text-align:right">Lives</span></div>`;
   rows.forEach(m=>{
     if(m.eliminated && firstDead){ rowsHtml += `<div class="sep">Eliminated</div>`; firstDead=false; }
     if(!m.eliminated) aliveRank++;
     const L = m.lives;
     const lifeCls = L<=2 ? 'danger' : L<=5 ? 'warn' : 'go';
+    const pips = Array.from({length:startingLives}, (_,i)=>pip(i, L)).join('');
     rowsHtml += `<div class="row mgr ${m.eliminated?'out':''}">
       <span class="rank ${(!m.eliminated && aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
       <span class="who"><span class="nm">${m.name}</span>
         <span class="cards">${cardPip('WC', m.wildcardUsed, m.wildcardResult)}${cardPip('DC', m.drawcardUsed, m.drawcardResult)}</span>
       </span>
       <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
-      <span></span>
-      <span class="lifenum ${lifeCls}">${L}</span>
+      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span></span>
     </div>`;
   });
   const published = snap.publishedAt ? new Date(snap.publishedAt).toLocaleString('en-GB',
