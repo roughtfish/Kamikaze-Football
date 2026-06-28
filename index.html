@@ -178,6 +178,8 @@
     border:1px solid var(--line);color:var(--ink);padding:11px 18px;border-radius:10px;box-shadow:var(--shadow);
     font-size:14px;z-index:60;opacity:0;transition:opacity .2s, transform .2s;pointer-events:none}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  .srow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+  .trow{display:grid;grid-template-columns:1fr 84px auto;gap:8px;align-items:center}
   /* login overlay */
   .login{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:20px;
     background:radial-gradient(900px 400px at 50% -120px, rgba(25,226,160,.10), transparent 60%), rgba(4,7,14,.92);
@@ -236,6 +238,7 @@
     <button data-tab="picks">Enter picks</button>
     <button data-tab="resolve">Resolve</button>
     <button data-tab="limits">Squad limits</button>
+    <button data-tab="season">Season</button>
   </nav>
 </div>
 
@@ -404,7 +407,7 @@ function render(){
     st==='resolved' ? 'Status · <b>resolved</b>' :
     st==='locked'   ? 'Status · locked' : 'Status · open';
   document.getElementById('aliveCount').textContent = aliveManagers().length;
-  ({standings:renderStandings, picks:renderPicks, resolve:renderResolve, limits:renderLimits}[activeTab])();
+  ({standings:renderStandings, picks:renderPicks, resolve:renderResolve, limits:renderLimits, season:renderSeason}[activeTab])();
 }
 
 /* --- Standings --- */
@@ -685,6 +688,112 @@ function renderLimits(){
   html += `</tbody></table></div>
     <div class="toolbar"><span class="note">“Squad str” = summed strength of teams still available — the final tiebreak (lower wins).</span></div></div>`;
   view.innerHTML = html;
+}
+
+/* --- Season setup / new-season reset --- */
+// 26/27 Premier League. Strengths are a starting order — edit them to taste.
+const PL_2627 = [
+  {name:'Arsenal',strength:20},{name:'Man City',strength:19},{name:'Liverpool',strength:18},
+  {name:'Man Utd',strength:17},{name:'Aston Villa',strength:16},{name:'Chelsea',strength:15},
+  {name:'Newcastle',strength:14},{name:'Bournemouth',strength:13},{name:'Spurs',strength:12},
+  {name:'Brighton',strength:11},{name:'Crystal Palace',strength:10},{name:'Sunderland',strength:9},
+  {name:'Fulham',strength:8},{name:'Everton',strength:7},{name:'Brentford',strength:6},
+  {name:'Leeds',strength:5},{name:'Notts Forest',strength:4},{name:'Ipswich',strength:3},
+  {name:'Hull City',strength:2},{name:'Coventry',strength:1}
+];
+let seasonDraft = null;
+function initDraft(){
+  seasonDraft = {
+    label:'26/27',
+    managers: state.managers.map(m=>m.name),   // carry the roster over; trim/add below
+    teams: PL_2627.map(t=>({...t}))             // new PL line-up, editable
+  };
+}
+function renderSeason(){
+  if(!seasonDraft) initDraft();
+  const d = seasonDraft;
+  const mgrRows = d.managers.map((n,i)=>`
+    <div class="srow" data-i="${i}">
+      <input type="text" class="dMgr" value="${(n||'').replace(/"/g,'&quot;')}" placeholder="name">
+      <button class="btn ghost del" data-i="${i}" style="padding:7px 11px">×</button>
+    </div>`).join('');
+  const teamRows = d.teams.map((t,i)=>`
+    <div class="trow" data-i="${i}">
+      <input type="text" class="dTeam" value="${(t.name||'').replace(/"/g,'&quot;')}" placeholder="team">
+      <input type="number" class="dStr" value="${t.strength}" min="1" max="20" title="strength">
+      <button class="btn ghost delT" data-i="${i}" style="padding:7px 11px">×</button>
+    </div>`).join('');
+
+  view.innerHTML = `
+    <div class="okbox" style="margin:0 0 16px">
+      Current season: <b>${state.season||'—'}</b> · ${state.managers.length} managers ·
+      ${aliveManagers().length} still alive. Starting a new season clears everything below into a fresh slate.
+    </div>
+
+    <div class="panel"><div class="phead"><h2>1 · Back up ${state.season||'this season'}</h2>
+      <span class="hint">saves the final table to a file before you wipe it</span></div>
+      <div class="toolbar"><button class="btn ghost" id="backup">Download backup (.json)</button>
+        <span class="note">Keep this — it's the only record of the season once you reset.</span></div></div>
+
+    <div class="panel"><div class="phead"><h2>2 · Managers for ${d.label}</h2>
+      <span class="hint">${d.managers.length} in · edit, remove, or add</span></div>
+      <div style="padding:12px 16px;display:grid;gap:8px">${mgrRows}
+        <div><button class="btn ghost" id="addMgr">+ Add manager</button></div></div></div>
+
+    <div class="panel"><div class="phead"><h2>3 · Teams (26/27 Premier League)</h2>
+      <span class="hint">strength 20 = best · used for tiebreak & pick value</span></div>
+      <div style="padding:12px 16px;display:grid;gap:8px">${teamRows}
+        <div><button class="btn ghost" id="addTeam">+ Add team</button></div></div></div>
+
+    <div class="panel"><div class="phead"><h2>4 · Start the season</h2></div>
+      <div class="warnbox" style="margin:14px 16px">Resets every manager to ${state.startingLives||15} lives,
+        clears all records, bans, cards and picks, and sets gameweek 1. This overwrites the database and can't be undone.</div>
+      <div class="toolbar"><button class="btn warn" id="startSeason">Start ${d.label} season</button>
+        <span class="note">Download the backup first.</span></div></div>`;
+
+  // bind inputs to draft
+  view.querySelectorAll('.dMgr').forEach((el,i)=>el.oninput=()=>{ d.managers[i]=el.value; });
+  view.querySelectorAll('.del').forEach(b=>b.onclick=()=>{ d.managers.splice(+b.dataset.i,1); render(); });
+  view.querySelectorAll('.dTeam').forEach((el,i)=>el.oninput=()=>{ d.teams[i].name=el.value; });
+  view.querySelectorAll('.dStr').forEach((el,i)=>el.oninput=()=>{ d.teams[i].strength=+el.value; });
+  view.querySelectorAll('.delT').forEach(b=>b.onclick=()=>{ d.teams.splice(+b.dataset.i,1); render(); });
+  document.getElementById('addMgr').onclick=()=>{ d.managers.push(''); render(); };
+  document.getElementById('addTeam').onclick=()=>{ d.teams.push({name:'',strength:1}); render(); };
+  document.getElementById('backup').onclick=exportBackup;
+  document.getElementById('startSeason').onclick=startNewSeason;
+}
+function exportBackup(){
+  try{
+    const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=`kamikaze-${(state.season||'season').replace(/\//g,'-')}-backup.json`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+    toast('Backup downloaded');
+  }catch(e){ alert('Backup failed: '+e.message); }
+}
+function startNewSeason(){
+  const d=seasonDraft;
+  const names=d.managers.map(n=>(n||'').trim()).filter(Boolean);
+  const teams=d.teams.map(t=>({name:(t.name||'').trim(),strength:Number(t.strength)||0})).filter(t=>t.name);
+  if(names.length<2){ alert('Add at least two managers.'); return; }
+  if(teams.length<2){ alert('Add at least a couple of teams.'); return; }
+  if(new Set(names).size!==names.length){ alert('Two managers have the same name — make them unique.'); return; }
+  if(!confirm(`Start the ${d.label} season?\n\n${names.length} managers · ${teams.length} teams.\nEveryone resets to ${state.startingLives||15} lives, GW1. The current season is wiped from the database.\n\nDownload a backup first if you haven't. Continue?`)) return;
+  state = {
+    season:d.label,
+    startingLives:state.startingLives||15,
+    maxPicksPerTeam:state.maxPicksPerTeam||2,
+    currentGw:1,
+    teams,
+    managers:names.map(name=>({name,lives:state.startingLives||15,wins:0,draws:0,losses:0,
+      eliminated:false,wildcardUsed:false,drawcardUsed:false,used:{},picks:{}})),
+    gameweeks:{}
+  };
+  seasonDraft=null;
+  save();
+  toast(`${state.season} season started`);
+  setTab('standings');
 }
 
 /* ---------- 5. CHROME / EVENTS ------------------------------------------ */
