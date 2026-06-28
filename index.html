@@ -839,6 +839,7 @@ function renderStandings(){
       m[key] = nowUsed;
       if(!nowUsed) m[resultKey] = null;   // manually un-using it clears any recorded outcome
       save();
+      autoPublishStats();
     };
   });
 }
@@ -1153,6 +1154,12 @@ function applyGameweek(n){
   save();
   toast(`Gameweek ${n} applied`);
   setTab('standings');
+  autoPublishStats();
+}
+// fire-and-forget publish, used after actions that change what players see —
+// failures don't interrupt the admin action, just surface quietly via console
+function autoPublishStats(){
+  publishPublicStats().catch(e=>console.warn('auto-publish failed:', e));
 }
 function undoGameweek(n){
   const g = gwObj(n); if(!g || !g._undo){ toast('Nothing to undo'); return; }
@@ -1165,6 +1172,7 @@ function undoGameweek(n){
   });
   delete g._undo; g.status = 'open'; state.currentGw = n;
   save(); toast(`Gameweek ${n} reopened`); setTab('resolve');
+  autoPublishStats();
 }
 
 /* --- Squad limits / bans --- */
@@ -1365,6 +1373,7 @@ function loadSeason(id){
   activeId=id; state=root.seasons[id]; root.active=id;
   if(fbRef){ firebase.database().ref(`${DB_PATH}/active`).set(id).catch(()=>{}); }
   hideChooser(); setTab('standings'); toast(`Loaded ${state.season||id}`);
+  autoPublishStats();
 }
 function createSeason(label, names){
   const fresh = {
@@ -1382,6 +1391,7 @@ function createSeason(label, names){
     firebase.database().ref(`${DB_PATH}/active`).set(id).catch(()=>{});
   }
   hideChooser(); setTab('standings'); toast(`${label} season started`);
+  autoPublishStats();
 }
 
 /* Season tab — current season + open the chooser + backup */
