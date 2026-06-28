@@ -192,6 +192,13 @@
   .login-lab{display:block;font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;
     font-size:11.5px;color:var(--faint);margin:12px 0 5px}
   .login-err{color:var(--danger);font-size:13px;min-height:18px;margin-top:8px}
+  .season-item{display:block;width:100%;text-align:left;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:10px;padding:11px 13px;cursor:pointer;color:var(--ink)}
+  .season-item:hover{border-color:var(--go-dim);background:var(--raised)}
+  .si-name{display:block;font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.02em}
+  .si-cur{font-family:var(--body);font-size:10px;color:var(--go);border:1px solid var(--go-dim);border-radius:4px;
+    padding:1px 5px;margin-left:6px;vertical-align:middle;text-transform:uppercase;letter-spacing:.08em}
+  .si-sub{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
   @media (max-width:680px){
     .row{grid-template-columns:24px 1fr 64px;gap:8px}
     .row .lives .pips{display:none}
@@ -261,6 +268,19 @@
   </div>
 </div>
 
+<div class="login" id="chooser" style="display:none">
+  <div class="login-card" style="max-width:420px">
+    <div class="login-crest">
+      <svg viewBox="0 0 64 64" fill="none" width="34" height="34" aria-hidden="true">
+        <path d="M32 4c4 9 13 9 22 11-6 7-4 17-9 25-4 6-9 11-13 19-4-8-9-13-13-19-5-8-3-18-9-25 9-2 18-2 22-11z" stroke="#19e2a0" stroke-width="2.4" stroke-linejoin="round"/>
+        <circle cx="32" cy="30" r="7.5" fill="#0b1626" stroke="#eaf1fb" stroke-width="2"/>
+      </svg>
+      <div><div class="login-title">Kamikaze Football</div><div class="login-sub" id="chooserSub">Choose a season</div></div>
+    </div>
+    <div id="chooserBody"></div>
+  </div>
+</div>
+
 <main class="wrap" id="view"></main>
 
 <div class="toast" id="toast"></div>
@@ -300,30 +320,44 @@ const DB_PATH = 'kamikaze_pl';   // change if you run more than one league
 
 /* ---------- 2. STORE (Firebase if configured, else in-memory) ------------ */
 const SEED = JSON.parse(document.getElementById('seed').textContent);
-let state = structuredClone(SEED);
+let root = null;        // { active:<id>, seasons:{ <id>: <seasonState> } }
+let activeId = null;    // id of the season currently loaded
+let state = structuredClone(SEED);  // working copy of the active season
 let fbRef = null;
+
+const slug = label => String(label||'season').trim().replace(/[\/\s]+/g,'-').replace(/[^A-Za-z0-9_-]/g,'') || 'season';
+function uniqueId(base){ let id=slug(base), n=2; while(root&&root.seasons&&root.seasons[id]){ id=slug(base)+'-'+(n++); } return id; }
 
 function dataLive(on, text){
   const c = document.getElementById('dataChip');
   c.className = 'chip ' + (on ? 'live' : 'local');
   document.getElementById('dataChipText').textContent = text;
 }
+// coerce whatever's in storage into the {active, seasons} shape
+function migrate(data){
+  if(!data){ const id=slug(SEED.season); return {active:id, seasons:{[id]:structuredClone(SEED)}, _migrated:true}; }
+  if(data.seasons) return data;                      // already multi-season
+  const id = slug(data.season||'season');            // old flat single season -> wrap it
+  return {active:id, seasons:{[id]:data}, _migrated:true};
+}
 
 async function initStore(){
   const configured = firebaseConfig.databaseURL && firebaseConfig.apiKey;
   if(!configured || typeof firebase === 'undefined'){
+    root = migrate(null); activeId = root.active; state = root.seasons[activeId];
     dataLive(false, configured ? 'Firebase unreachable · local' : 'Local data (no sync)');
-    render(); return;
+    showChooser(); render(); return;
   }
   try{
     firebase.initializeApp(firebaseConfig);
     firebase.auth().onAuthStateChanged(user=>{
       if(user){ hideLogin(); showSignOut(true); connectDb(); }
-      else { showSignOut(false); dataLive(false, 'Sign in to sync'); showLogin(); }
+      else { showSignOut(false); dataLive(false, 'Sign in to sync'); hideChooser(); showLogin(); }
     });
   }catch(e){
     console.warn('Firebase init failed, staying local:', e);
-    dataLive(false, 'Firebase error · local');
+    root = migrate(null); activeId = root.active; state = root.seasons[activeId];
+    dataLive(false, 'Firebase error · local'); showChooser();
   }
   render();
 }
@@ -333,11 +367,19 @@ async function connectDb(){
   try{
     fbRef = firebase.database().ref(DB_PATH);
     const snap = await fbRef.get();
-    if(snap.exists()){ state = snap.val(); }
-    else { await fbRef.set(state); }            // first run: seed the DB
-    fbRef.on('value', s => { if(s.exists()){ state = s.val(); render(); } });
+    let data = migrate(snap.exists() ? snap.val() : null);
+    if(data._migrated){ delete data._migrated; await fbRef.set(data); }   // persist new shape
+    root = data;
+    fbRef.on('value', s => {
+      if(!s.exists()) return;
+      root = s.val();
+      if(activeId && root.seasons && root.seasons[activeId]){
+        state = root.seasons[activeId];
+        if(!chooserOpen()) render();
+      }
+    });
     dataLive(true, 'Firebase · synced');
-    render();
+    showChooser();                 // let me pick which season to work on
   }catch(e){
     console.warn('DB connect failed:', e);
     dbConnected=false;
@@ -365,7 +407,10 @@ async function signIn(){
 }
 function signOutNow(){ if(typeof firebase!=='undefined' && firebase.auth){ dbConnected=false; firebase.auth().signOut(); } }
 function save(){
-  if(fbRef){ fbRef.set(state).catch(e=>console.warn('save failed', e)); }
+  if(activeId && root && root.seasons){ root.seasons[activeId] = state; }
+  if(fbRef && activeId){
+    firebase.database().ref(`${DB_PATH}/seasons/${activeId}`).set(state).catch(e=>console.warn('save failed', e));
+  }
   render();
 }
 function normaliseUsed(){ state.managers.forEach(m=>{ m.used = m.used||{}; m.picks = m.picks||{}; }); }
@@ -690,8 +735,9 @@ function renderLimits(){
   view.innerHTML = html;
 }
 
-/* --- Season setup / new-season reset --- */
-// 26/27 Premier League. Strengths are a starting order — edit them to taste.
+/* --- Seasons: chooser, load, create --- */
+// 26/27 Premier League line-up. Strengths are a placeholder order; once the
+// results pull is in, team value comes from the live table instead.
 const PL_2627 = [
   {name:'Arsenal',strength:20},{name:'Man City',strength:19},{name:'Liverpool',strength:18},
   {name:'Man Utd',strength:17},{name:'Aston Villa',strength:16},{name:'Chelsea',strength:15},
@@ -701,52 +747,113 @@ const PL_2627 = [
   {name:'Leeds',strength:5},{name:'Notts Forest',strength:4},{name:'Ipswich',strength:3},
   {name:'Hull City',strength:2},{name:'Coventry',strength:1}
 ];
+function nextLabel(prev){
+  const m=/^(\d{2})\/(\d{2})$/.exec(String(prev||'').trim());
+  if(m){ const a=(+m[1]+1)%100, b=(+m[2]+1)%100; return String(a).padStart(2,'0')+'/'+String(b).padStart(2,'0'); }
+  return '26/27';
+}
 let seasonDraft = null;
 function initDraft(){
-  seasonDraft = {
-    label:'26/27',
-    managers: state.managers.map(m=>m.name)   // carry the roster over; trim/add below
-  };
+  const base = (root && root.seasons && root.active && root.seasons[root.active]) ? root.seasons[root.active] : state;
+  seasonDraft = { label: nextLabel(base && base.season), managers: (base.managers||[]).map(m=>m.name) };
 }
+function seasonSummary(s){
+  const mgrs=(s.managers||[]); const alive=mgrs.filter(m=>!m.eliminated).length;
+  return `${mgrs.length} managers · ${alive} alive · GW ${s.currentGw||1}`;
+}
+
+/* chooser overlay (shown after login) */
+function chooserOpen(){ const el=document.getElementById('chooser'); return el && el.style.display!=='none'; }
+function hideChooser(){ const el=document.getElementById('chooser'); if(el) el.style.display='none'; }
+let _chMode='list';
+function showChooser(mode){ _chMode = mode || 'list'; renderChooser(); document.getElementById('chooser').style.display='flex'; }
+function renderChooser(){
+  const body=document.getElementById('chooserBody');
+  const sub=document.getElementById('chooserSub');
+  if(_chMode==='new'){
+    if(!seasonDraft) initDraft();
+    const d=seasonDraft;
+    sub.textContent='Start a new season';
+    body.innerHTML = `
+      <label class="login-lab" for="nsLabel">Season name</label>
+      <input type="text" id="nsLabel" value="${(d.label||'').replace(/"/g,'&quot;')}" placeholder="26/27">
+      <label class="login-lab" style="margin-top:14px">Managers (${d.managers.length})</label>
+      <div id="nsMgrs" style="display:grid;gap:7px;max-height:34vh;overflow:auto;padding-right:2px">
+        ${d.managers.map((n,i)=>`<div class="srow"><input type="text" class="nsMgr" value="${(n||'').replace(/"/g,'&quot;')}" placeholder="name"><button class="btn ghost nsDel" data-i="${i}" style="padding:6px 10px">×</button></div>`).join('')}
+      </div>
+      <button class="btn ghost" id="nsAdd" style="margin-top:8px">+ Add manager</button>
+      <p class="note" style="margin:12px 0 0">Loads the 26/27 Premier League teams, everyone on 15 lives, gameweek 1. Your other seasons are kept.</p>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn ghost" id="nsBack">‹ Back</button>
+        <button class="btn" id="nsCreate" style="flex:1">Create season</button>
+      </div>`;
+    document.getElementById('nsLabel').oninput=e=>{ d.label=e.target.value; };
+    body.querySelectorAll('.nsMgr').forEach((el,i)=>el.oninput=()=>{ d.managers[i]=el.value; });
+    body.querySelectorAll('.nsDel').forEach(b=>b.onclick=()=>{ d.managers.splice(+b.dataset.i,1); renderChooser(); });
+    document.getElementById('nsAdd').onclick=()=>{ d.managers.push(''); renderChooser(); };
+    document.getElementById('nsBack').onclick=()=>{ _chMode='list'; renderChooser(); };
+    document.getElementById('nsCreate').onclick=()=>{
+      const names=d.managers.map(n=>(n||'').trim()).filter(Boolean);
+      const label=(d.label||'').trim()||'New season';
+      if(names.length<2){ alert('Add at least two managers.'); return; }
+      if(new Set(names).size!==names.length){ alert('Two managers share a name — make them unique.'); return; }
+      seasonDraft=null; createSeason(label, names);
+    };
+    return;
+  }
+  // list mode
+  sub.textContent='Choose a season';
+  const seasons = root && root.seasons ? Object.entries(root.seasons) : [];
+  seasons.sort((a,b)=> String(b[1].season||'').localeCompare(String(a[1].season||'')));
+  const items = seasons.map(([id,s])=>`
+    <button class="season-item" data-id="${id}">
+      <span class="si-name">${s.season||id}${id===(root&&root.active)?' <span class="si-cur">current</span>':''}</span>
+      <span class="si-sub">${seasonSummary(s)}</span>
+    </button>`).join('') || `<p class="note">No seasons yet — start one below.</p>`;
+  body.innerHTML = `
+    <div style="display:grid;gap:8px;max-height:46vh;overflow:auto;padding-right:2px">${items}</div>
+    <button class="btn" id="chNew" style="width:100%;margin-top:14px">+ Start a new season</button>`;
+  body.querySelectorAll('.season-item').forEach(b=>b.onclick=()=>loadSeason(b.dataset.id));
+  document.getElementById('chNew').onclick=()=>{ seasonDraft=null; _chMode='new'; renderChooser(); };
+}
+function loadSeason(id){
+  if(!root || !root.seasons || !root.seasons[id]) return;
+  activeId=id; state=root.seasons[id]; root.active=id;
+  if(fbRef){ firebase.database().ref(`${DB_PATH}/active`).set(id).catch(()=>{}); }
+  hideChooser(); setTab('standings'); toast(`Loaded ${state.season||id}`);
+}
+function createSeason(label, names){
+  const fresh = {
+    season: label, startingLives:15, maxPicksPerTeam:2, currentGw:1,
+    teams: PL_2627.map(t=>({...t})),
+    managers: names.map(name=>({name, lives:15, wins:0, draws:0, losses:0,
+      eliminated:false, wildcardUsed:false, drawcardUsed:false, used:{}, picks:{}})),
+    gameweeks:{}
+  };
+  const id = uniqueId(label);
+  root = root || {seasons:{}}; root.seasons = root.seasons || {};
+  root.seasons[id]=fresh; root.active=id; activeId=id; state=fresh;
+  if(fbRef){
+    firebase.database().ref(`${DB_PATH}/seasons/${id}`).set(fresh).catch(e=>console.warn(e));
+    firebase.database().ref(`${DB_PATH}/active`).set(id).catch(()=>{});
+  }
+  hideChooser(); setTab('standings'); toast(`${label} season started`);
+}
+
+/* Season tab — current season + open the chooser + backup */
 function renderSeason(){
-  if(!seasonDraft) initDraft();
-  const d = seasonDraft;
-  const mgrRows = d.managers.map((n,i)=>`
-    <div class="srow" data-i="${i}">
-      <input type="text" class="dMgr" value="${(n||'').replace(/"/g,'&quot;')}" placeholder="name">
-      <button class="btn ghost del" data-i="${i}" style="padding:7px 11px">×</button>
-    </div>`).join('');
-
   view.innerHTML = `
-    <div class="okbox" style="margin:0 0 16px">
-      Current season: <b>${state.season||'—'}</b> · ${state.managers.length} managers ·
-      ${aliveManagers().length} still alive. Starting a new season clears everything into a fresh slate.
-    </div>
-
-    <div class="panel"><div class="phead"><h2>1 · Back up ${state.season||'this season'}</h2>
-      <span class="hint">saves the final table to a file before you wipe it</span></div>
-      <div class="toolbar"><button class="btn ghost" id="backup">Download backup (.json)</button>
-        <span class="note">Keep this — it's the only record of the season once you reset.</span></div></div>
-
-    <div class="panel"><div class="phead"><h2>2 · Managers for ${d.label}</h2>
-      <span class="hint">${d.managers.length} in · edit, remove, or add</span></div>
-      <div style="padding:12px 16px;display:grid;gap:8px">${mgrRows}
-        <div><button class="btn ghost" id="addMgr">+ Add manager</button></div></div></div>
-
-    <div class="panel"><div class="phead"><h2>3 · Start the season</h2>
-      <span class="hint">26/27 Premier League teams load automatically</span></div>
-      <div class="warnbox" style="margin:14px 16px">Resets every manager to ${state.startingLives||15} lives,
-        clears all records, bans, cards and picks, loads the 26/27 teams, and sets gameweek 1.
-        This overwrites the database and can't be undone.</div>
-      <div class="toolbar"><button class="btn warn" id="startSeason">Start ${d.label} season</button>
-        <span class="note">Download the backup first.</span></div></div>`;
-
-  // bind inputs to draft
-  view.querySelectorAll('.dMgr').forEach((el,i)=>el.oninput=()=>{ d.managers[i]=el.value; });
-  view.querySelectorAll('.del').forEach(b=>b.onclick=()=>{ d.managers.splice(+b.dataset.i,1); render(); });
-  document.getElementById('addMgr').onclick=()=>{ d.managers.push(''); render(); };
+    <div class="panel"><div class="phead"><h2>Season</h2><span class="hint">${state.season||'—'}</span></div>
+      <div style="padding:14px 16px;display:grid;gap:12px">
+        <div class="okbox">Loaded: <b>${state.season||'—'}</b> · ${seasonSummary(state)}</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" id="switchSeason">Switch or start a season</button>
+          <button class="btn ghost" id="backup">Download backup (.json)</button>
+        </div>
+        <p class="note">“Switch or start a season” opens the same chooser you get at login — load a past season or begin a new one. Starting a new season keeps the others intact.</p>
+      </div></div>`;
+  document.getElementById('switchSeason').onclick=()=>showChooser('list');
   document.getElementById('backup').onclick=exportBackup;
-  document.getElementById('startSeason').onclick=startNewSeason;
 }
 function exportBackup(){
   try{
@@ -758,28 +865,7 @@ function exportBackup(){
     toast('Backup downloaded');
   }catch(e){ alert('Backup failed: '+e.message); }
 }
-function startNewSeason(){
-  const d=seasonDraft;
-  const names=d.managers.map(n=>(n||'').trim()).filter(Boolean);
-  const teams=PL_2627.map(t=>({...t}));   // 26/27 line-up; values become table-driven once results are pulled
-  if(names.length<2){ alert('Add at least two managers.'); return; }
-  if(new Set(names).size!==names.length){ alert('Two managers have the same name — make them unique.'); return; }
-  if(!confirm(`Start the ${d.label} season?\n\n${names.length} managers · ${teams.length} teams.\nEveryone resets to ${state.startingLives||15} lives, GW1. The current season is wiped from the database.\n\nDownload a backup first if you haven't. Continue?`)) return;
-  state = {
-    season:d.label,
-    startingLives:state.startingLives||15,
-    maxPicksPerTeam:state.maxPicksPerTeam||2,
-    currentGw:1,
-    teams,
-    managers:names.map(name=>({name,lives:state.startingLives||15,wins:0,draws:0,losses:0,
-      eliminated:false,wildcardUsed:false,drawcardUsed:false,used:{},picks:{}})),
-    gameweeks:{}
-  };
-  seasonDraft=null;
-  save();
-  toast(`${state.season} season started`);
-  setTab('standings');
-}
+
 
 /* ---------- 5. CHROME / EVENTS ------------------------------------------ */
 function setTab(t){
@@ -825,3 +911,4 @@ function toast(msg){
 </script>
 </body>
 </html>
+
