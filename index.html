@@ -589,6 +589,14 @@ function renderPicks(){
       <p class="note">Picks are locked. Step to a later gameweek to enter new picks.</p></div></div>`;
     return;
   }
+  // no fixtures yet for this gameweek -> fetch them automatically so auto-pick has
+  // something to work from without you having to remember to click the button
+  if((!g.fixtures || !g.fixtures.length) && !g._fxAutoTried){
+    g._fxAutoTried = true;
+    tsdbFetchRound(n).then(({events})=>{
+      if(events.length){ g.fixtures = events.map(e=>({home:e.home, away:e.away})); save(); }
+    }).catch(()=>{ /* silent — manual fetch button still there as a fallback */ });
+  }
   const alive = aliveManagers();
   const allTeamOpts = sel => state.teams.map(t=>`<option value="${t.name}" ${sel===t.name?'selected':''}>${t.name}</option>`).join('');
   const fx = (g.fixtures && g.fixtures.length) ? g.fixtures : [];
@@ -716,6 +724,13 @@ function renderResolve(){
       <span class="note">Reverses the life/record changes from GW ${n}.</span></div></div>`;
     document.getElementById('undo').onclick = ()=>undoGameweek(n);
     return;
+  }
+  // safety net: if you've jumped here without visiting Picks, make sure fixtures exist first
+  if((!g.fixtures || !g.fixtures.length) && !g._fxAutoTried){
+    g._fxAutoTried = true;
+    tsdbFetchRound(n).then(({events})=>{
+      if(events.length){ g.fixtures = events.map(e=>({home:e.home, away:e.away})); save(); }
+    }).catch(()=>{});
   }
   // fill any missing picks with the first available away team
   materializeAutos(g);
