@@ -958,7 +958,8 @@ function renderPicks(){
     }).catch(()=>{ /* silent — manual fetch button still there as a fallback */ });
   }
   const alive = aliveManagers();
-  const allTeamOpts = sel => state.teams.map(t=>`<option value="${t.name}" ${sel===t.name?'selected':''}>${t.name}</option>`).join('');
+  const allTeamOpts = sel => [...state.teams].sort((a,b)=>a.name.localeCompare(b.name))
+    .map(t=>`<option value="${t.name}" ${sel===t.name?'selected':''}>${t.name}</option>`).join('');
   const fx = (g.fixtures && g.fixtures.length) ? g.fixtures : [];
   const fxRows = fx.map((f,i)=>`
     <div class="fxpair" data-i="${i}">
@@ -986,7 +987,7 @@ function renderPicks(){
     <span class="hint">${alive.length} managers in · blanks auto-fill at resolve</span></div>`;
   alive.forEach(m=>{
     const p = (g.picks && g.picks[m.name]) || {};
-    const opts = availableTeams(m).sort((a,b)=>b.strength-a.strength).map(t=>{
+    const opts = availableTeams(m).sort((a,b)=>a.name.localeCompare(b.name)).map(t=>{
       const rem = state.maxPicksPerTeam - used(m,t.name);
       const sel = p.team===t.name ? 'selected':'';
       return `<option value="${t.name}" ${sel}>${t.name} · ${rem} left</option>`;
