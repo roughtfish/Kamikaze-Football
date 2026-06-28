@@ -1094,8 +1094,15 @@ function renderResolve(){
   g.results = g.results || {};
   teamsToRate.forEach(t=>{
     const r = g.results[t.name] || '';
+    const pickers = Object.entries(g.picks||{})
+      .filter(([,p])=>p.team===t.name)
+      .map(([name,p])=>{
+        const flags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
+        return flags ? `${name} (${flags})` : name;
+      }).join(', ');
     html += `<div class="fixrow" data-team="${t.name}">
-      <span class="nm">${t.name} <span class="strength">str ${t.strength}</span></span>
+      <span class="nm">${t.name} <span class="strength">str ${t.strength}</span>
+        <span class="strength" style="display:block;margin-top:2px;">${pickers}</span></span>
       <span></span><span></span>
       <span class="seg">
         <button class="rW ${r==='W'?'on H':''}" data-r="W">Win</button>
@@ -1175,14 +1182,15 @@ function effect(p, result){
 function renderPreview(g){
   const rows = Object.entries(g.picks||{}).filter(([,p])=>p.team).map(([name,p])=>{
     const m = state.managers.find(x=>x.name===name);
+    const flags = [p.auto?'AUTO':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
+    const nameCell = `${name} ${flags?`<span class="strength">${flags}</span>`:''}`;
     const res = g.results[p.team];
-    if(!res) return `<tr><td>${name}</td><td>${p.team}</td><td class="num">—</td><td class="num">—</td><td>${m.lives}</td></tr>`;
+    if(!res) return `<tr><td>${nameCell}</td><td>${p.team}</td><td class="num">—</td><td class="num">—</td><td>${m.lives}</td></tr>`;
     const e = effect(p, res);
     const nl = m.lives + e.delta;
     const cls = e.delta>0?'go':e.delta<0?'danger':'';
-    const flags = [p.auto?'AUTO':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
     return `<tr>
-      <td>${name} ${flags?`<span class="strength">${flags}</span>`:''}</td>
+      <td>${nameCell}</td>
       <td>${p.team}</td>
       <td class="num">${res}</td>
       <td class="num" style="color:var(--${cls||'muted'})">${e.delta>0?'+':''}${e.delta}</td>
