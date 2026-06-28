@@ -492,6 +492,70 @@ function fdToOurName(fdName){
 function outcomeFromScore(myScore, theirScore){
   if(myScore>theirScore) return 'W'; if(myScore<theirScore) return 'L'; return 'D';
 }
+// short codes for the share image
+const TEAM_CODES = {
+  'Arsenal':'ARS','Man City':'MCI','Liverpool':'LIV','Man Utd':'MUN','Aston Villa':'AVL',
+  'Chelsea':'CHE','Newcastle':'NEW','Bournemouth':'BOU','Spurs':'TOT','Brighton':'BHA',
+  'Crystal Palace':'CRY','Sunderland':'SUN','Fulham':'FUL','Everton':'EVE','Brentford':'BRE',
+  'Leeds':'LEE','Notts Forest':'NFO','Ipswich':'IPS','Hull City':'HUL','Coventry':'COV',
+  'West Ham':'WHU','Burnley':'BUR','Wolves':'WOL'
+};
+function teamCode(name){
+  if(TEAM_CODES[name]) return TEAM_CODES[name];
+  return String(name||'').replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase() || '?';
+}
+let _h2cLoading=null;
+function ensureHtml2Canvas(){
+  if(window.html2canvas) return Promise.resolve();
+  if(_h2cLoading) return _h2cLoading;
+  _h2cLoading = new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload=resolve; s.onerror=()=>reject(new Error('Could not load image renderer'));
+    document.head.appendChild(s);
+  });
+  return _h2cLoading;
+}
+async function shareFixturesImage(gwNum, fixtures){
+  if(!fixtures || !fixtures.length){ toast('No fixtures to share yet'); return; }
+  try{
+    await ensureHtml2Canvas();
+    const card = document.createElement('div');
+    card.style.cssText = 'position:fixed;left:-9999px;top:0;width:460px;background:#101a2c;'+
+      'font-family:Barlow,system-ui,sans-serif;padding:24px;border-radius:16px;color:#eaf1fb;';
+    const rows = fixtures.map(f=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1c2a44;">
+        <div style="width:28px;height:28px;border-radius:50%;background:#16223a;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#8ea0c0;flex-shrink:0;">${teamCode(f.home)}</div>
+        <span style="flex:1;font-size:14px;text-align:right;">${f.home||'?'}</span>
+        <span style="font-size:11px;color:#5e7095;width:16px;text-align:center;">v</span>
+        <span style="flex:1;font-size:14px;">${f.away||'?'}</span>
+        <div style="width:28px;height:28px;border-radius:50%;background:#16223a;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#8ea0c0;flex-shrink:0;">${teamCode(f.away)}</div>
+      </div>`).join('');
+    card.innerHTML = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
+        <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
+      </div>
+      <div style="font-size:13px;color:#8ea0c0;margin-bottom:14px;">Gameweek ${gwNum} fixtures</div>
+      <div style="border-top:1px solid #1c2a44;">${rows}</div>`;
+    document.body.appendChild(card);
+    const canvas = await html2canvas(card, {backgroundColor:'#101a2c', scale:2});
+    document.body.removeChild(card);
+    const blob = await new Promise(res=>canvas.toBlob(res,'image/png'));
+    const file = new File([blob], `kamikaze-gw${gwNum}-fixtures.png`, {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:`Gameweek ${gwNum} fixtures`});
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = file.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      toast('Image downloaded — attach it to WhatsApp');
+    }
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
+}
 // returns {events:[{home,away,homeScore,awayScore,finished}], unmatched:Number} or throws
 async function tsdbFetchRound(roundNum){
   const res = await fetch(`${FD_PROXY_URL}?matchday=${roundNum}`);
@@ -610,6 +674,7 @@ function renderPicks(){
     <div style="padding:10px 16px;display:grid;gap:8px">
       <div class="toolbar" style="padding:0 0 4px;border-top:0">
         <button class="btn ghost" id="fetchFix">⇣ Fetch GW${n} fixtures</button>
+        ${fx.length?'<button class="btn ghost" id="shareFx">Share fixtures image</button>':''}
         <span class="note" id="fixFetchNote"></span>
       </div>
       ${fxRows}
@@ -681,6 +746,8 @@ function renderPicks(){
       note.textContent = 'Fetch failed: '+e.message;
     }
   };
+  const shareFx = document.getElementById('shareFx');
+  if(shareFx) shareFx.onclick = ()=>shareFixturesImage(n, fx);
 
   // wildcard & drawcard mutually exclusive in a single week
   view.querySelectorAll('.pickrow').forEach(rowEl=>{
