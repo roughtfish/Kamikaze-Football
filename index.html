@@ -199,6 +199,8 @@
   .si-cur{font-family:var(--body);font-size:10px;color:var(--go);border:1px solid var(--go-dim);border-radius:4px;
     padding:1px 5px;margin-left:6px;vertical-align:middle;text-transform:uppercase;letter-spacing:.08em}
   .si-sub{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+  .season-row{display:flex;gap:8px;align-items:stretch}
+  .season-row .season-item{flex:1}
   .fxbox{background:var(--panel);border:1px solid var(--line-soft);border-radius:14px;margin-bottom:16px;overflow:hidden}
   .fxbox>summary{padding:13px 16px;cursor:pointer;font-family:var(--disp);text-transform:uppercase;letter-spacing:.05em;font-size:14px;list-style:none}
   .fxbox>summary::-webkit-details-marker{display:none}
@@ -977,15 +979,38 @@ function renderChooser(){
   const seasons = root && root.seasons ? Object.entries(root.seasons) : [];
   seasons.sort((a,b)=> String(b[1].season||'').localeCompare(String(a[1].season||'')));
   const items = seasons.map(([id,s])=>`
-    <button class="season-item" data-id="${id}">
-      <span class="si-name">${s.season||id}${id===(root&&root.active)?' <span class="si-cur">current</span>':''}</span>
-      <span class="si-sub">${seasonSummary(s)}</span>
-    </button>`).join('') || `<p class="note">No seasons yet — start one below.</p>`;
+    <div class="season-row">
+      <button class="season-item" data-id="${id}">
+        <span class="si-name">${s.season||id}${id===(root&&root.active)?' <span class="si-cur">current</span>':''}</span>
+        <span class="si-sub">${seasonSummary(s)}</span>
+      </button>
+      <button class="btn ghost season-del" data-id="${id}" title="Delete season" style="padding:0 12px">×</button>
+    </div>`).join('') || `<p class="note">No seasons yet — start one below.</p>`;
   body.innerHTML = `
     <div style="display:grid;gap:8px;max-height:46vh;overflow:auto;padding-right:2px">${items}</div>
     <button class="btn" id="chNew" style="width:100%;margin-top:14px">+ Start a new season</button>`;
   body.querySelectorAll('.season-item').forEach(b=>b.onclick=()=>loadSeason(b.dataset.id));
+  body.querySelectorAll('.season-del').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); deleteSeason(b.dataset.id); });
   document.getElementById('chNew').onclick=()=>{ seasonDraft=null; _chMode='new'; renderChooser(); };
+}
+function deleteSeason(id){
+  if(!root || !root.seasons || !root.seasons[id]) return;
+  const s = root.seasons[id];
+  const label = s.season || id;
+  const totalSeasons = Object.keys(root.seasons).length;
+  if(totalSeasons <= 1){ alert("Can't delete your only season — start a new one first if you want to replace it."); return; }
+  if(!confirm(`Delete "${label}" permanently?\n\n${seasonSummary(s)}\nThis can't be undone. Download a backup first if you want to keep a copy — open "${label}" and use the backup button on the Season tab.`)) return;
+  delete root.seasons[id];
+  if(fbRef){ firebase.database().ref(`${DB_PATH}/seasons/${id}`).remove().catch(()=>{}); }
+  // if we just deleted the active season, fall back to whatever's left
+  if(root.active === id){
+    const remaining = Object.keys(root.seasons);
+    root.active = remaining[0];
+    activeId = root.active; state = root.seasons[activeId];
+    if(fbRef){ firebase.database().ref(`${DB_PATH}/active`).set(activeId).catch(()=>{}); }
+  }
+  toast(`Deleted ${label}`);
+  renderChooser();
 }
 function loadSeason(id){
   if(!root || !root.seasons || !root.seasons[id]) return;
