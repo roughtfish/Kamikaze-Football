@@ -340,6 +340,7 @@ const firebaseConfig = {
   measurementId: "G-7TE11W1DBX"
 };
 const DB_PATH = 'kamikaze_pl';   // change if you run more than one league
+const PUBLIC_PATH = 'kamikaze_pl_public';   // read-only to anyone; only this app writes to it
 
 /* ---------- 2. STORE (Firebase if configured, else in-memory) ------------ */
 const SEED = JSON.parse(document.getElementById('seed').textContent);
@@ -481,6 +482,30 @@ function sortedStandings(){
     if(a.losses !== b.losses) return a.losses - b.losses;       // fewest losses
     return remainingStrengthSum(a) - remainingStrengthSum(b);   // weakest remaining squad wins
   });
+}
+
+// builds a clean, curated snapshot (no admin/internal fields) and pushes it
+// to the public-readable path — players read this, never the real season data
+async function publishPublicStats(){
+  if(!fbRef) throw new Error("Not connected to Firebase — can't publish without it");
+  const rows = sortedStandings().map((m,i)=>({
+    name: m.name,
+    lives: m.lives,
+    eliminated: !!m.eliminated,
+    wins: m.wins, draws: m.draws, losses: m.losses,
+    wildcardUsed: !!m.wildcardUsed, wildcardResult: m.wildcardResult || null,
+    drawcardUsed: !!m.drawcardUsed, drawcardResult: m.drawcardResult || null,
+    bannedCount: state.teams.filter(t=>isBanned(m,t.name)).length
+  }));
+  const snapshot = {
+    season: state.season || '',
+    gw: gw(),
+    aliveCount: aliveManagers().length,
+    totalCount: state.managers.length,
+    managers: rows,
+    publishedAt: new Date().toISOString()
+  };
+  await firebase.database().ref(`${PUBLIC_PATH}/current`).set(snapshot);
 }
 
 /* ---------- 3b. FOOTBALL-DATA.ORG (via Cloudflare Worker proxy) --------- */
@@ -761,12 +786,18 @@ function renderStandings(){
   });
   html += `</div>
     <div class="toolbar"><button class="btn ghost" id="shareStandings">Share standings image</button>
+      <button class="btn ghost" id="publishStats">Publish to player stats page</button>
       <span class="note" id="standingsShareNote"></span></div></div>`;
   view.innerHTML = html;
   document.getElementById('shareStandings').onclick = async ()=>{
     const note=document.getElementById('standingsShareNote'); note.textContent='Building image…';
     try{ await shareStandingsImage(); note.textContent=''; }
     catch(e){ note.textContent='Failed: '+e.message; }
+  };
+  document.getElementById('publishStats').onclick = async ()=>{
+    const note=document.getElementById('standingsShareNote'); note.textContent='Publishing…';
+    try{ await publishPublicStats(); note.textContent='Published — players can now see this on the stats page.'; }
+    catch(e){ note.textContent='Publish failed: '+e.message; }
   };
   view.querySelectorAll('.cardpip').forEach(el=>{
     el.onclick = ()=>{
