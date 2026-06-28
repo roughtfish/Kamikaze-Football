@@ -201,6 +201,20 @@
   .si-sub{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
   .season-row{display:flex;gap:8px;align-items:stretch}
   .season-row .season-item{flex:1}
+  .rulesbody{padding:6px 18px 18px;max-width:640px}
+  .rulesbody h3{font-family:var(--disp);text-transform:uppercase;letter-spacing:.04em;font-size:16px;
+    margin:22px 0 6px;color:var(--ink)}
+  .rulesbody h3:first-child{margin-top:6px}
+  .rulesbody p{margin:6px 0;color:var(--muted);font-size:14.5px;line-height:1.55}
+  .rulesbody b{color:var(--ink)}
+  .rulestag{font-family:var(--disp);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--go);border:1px solid var(--go-dim);border-radius:5px;padding:1px 7px;margin-left:8px;vertical-align:middle}
+  .rulestable{margin:8px 0;width:auto;max-width:360px}
+  .rulestable td{border-bottom:1px solid var(--line-soft);padding:7px 16px 7px 0;font-size:14px}
+  .rulestable td.num{font-family:var(--num);text-align:right;padding-right:0;color:var(--ink)}
+  .ruleslist{margin:8px 0 4px;padding-left:22px;color:var(--muted);font-size:14.5px;line-height:1.6}
+  .ruleslist li{margin-bottom:6px}
+  .ruleslist b{color:var(--ink)}
   .fxbox{background:var(--panel);border:1px solid var(--line-soft);border-radius:14px;margin-bottom:16px;overflow:hidden}
   .fxbox>summary{padding:13px 16px;cursor:pointer;font-family:var(--disp);text-transform:uppercase;letter-spacing:.05em;font-size:14px;list-style:none}
   .fxbox>summary::-webkit-details-marker{display:none}
@@ -254,6 +268,7 @@
     <button data-tab="resolve">Resolve</button>
     <button data-tab="limits">Squad limits</button>
     <button data-tab="season">Season</button>
+    <button data-tab="rules">Rules</button>
   </nav>
 </div>
 
@@ -429,8 +444,14 @@ const aliveManagers = () => state.managers.filter(m=>!m.eliminated);
 function used(m,t){ return (m.used && m.used[t]) || 0; }
 function isBanned(m,t){ return used(m,t) >= state.maxPicksPerTeam; }
 function availableTeams(m){ return state.teams.filter(t=>!isBanned(m,t.name)); }
+// a team with only one use left is half as valuable a reserve as a fresh one,
+// so it counts double toward the tiebreak total (weight = maxPicks / usesLeft)
 function remainingStrengthSum(m){
-  return state.teams.filter(t=>!isBanned(m,t.name)).reduce((s,t)=>s+t.strength,0);
+  return state.teams.filter(t=>!isBanned(m,t.name)).reduce((s,t)=>{
+    const left = state.maxPicksPerTeam - used(m,t.name);   // >=1, since banned teams are filtered out
+    const weight = state.maxPicksPerTeam / left;
+    return s + t.strength*weight;
+  },0);
 }
 // auto-pick: first away team (in fixture order) the manager hasn't used twice
 function awayTeams(g){ return ((g&&g.fixtures)||[]).map(f=>f&&f.away).filter(Boolean); }
@@ -641,7 +662,7 @@ function render(){
     st==='resolved' ? 'Status · <b>resolved</b>' :
     st==='locked'   ? 'Status · locked' : 'Status · open';
   document.getElementById('aliveCount').textContent = aliveManagers().length;
-  ({standings:renderStandings, picks:renderPicks, resolve:renderResolve, limits:renderLimits, season:renderSeason}[activeTab])();
+  ({standings:renderStandings, picks:renderPicks, resolve:renderResolve, limits:renderLimits, season:renderSeason, rules:renderRules}[activeTab])();
 }
 
 /* --- Standings --- */
@@ -1030,7 +1051,7 @@ function renderLimits(){
       <td class="num">${remainingStrengthSum(m)}</td></tr>`;
   });
   html += `</tbody></table></div>
-    <div class="toolbar"><span class="note">“Squad str” = sum of the live league position of every team a manager hasn't already used twice. Lowest wins the final tiebreak — it means they've still got strong teams in reserve, exactly as the rulebook's tiebreak intends.</span></div></div>`;
+    <div class="toolbar"><span class="note">“Squad str” = sum of the live league position of every team a manager hasn't already used twice — a team with only one use left counts double, since it's half as useful a reserve as a fresh one. Lowest wins the final tiebreak: it means they've still got strong teams genuinely in reserve, matching the rulebook's tiebreak.</span></div></div>`;
   view.innerHTML = html;
   document.getElementById('fetchTable').onclick = async ()=>{
     const note=document.getElementById('tableFetchNote'); note.textContent='Fetching…';
@@ -1042,6 +1063,59 @@ function renderLimits(){
       note.textContent = 'Fetch failed: '+e.message;
     }
   };
+}
+
+/* --- Rules --- */
+function renderRules(){
+  view.innerHTML = `
+    <div class="panel"><div class="phead"><h2>How it works</h2>
+      <span class="hint">${state.season||''} · ${state.startingLives||15} lives · max ${state.maxPicksPerTeam||2} picks per team</span></div>
+      <div class="rulesbody">
+
+        <h3>The basics</h3>
+        <p>Every manager starts the season with <b>${state.startingLives||15} lives</b>. Each gameweek, you pick one
+        Premier League team to win. What happens to your lives depends on the result:</p>
+        <table class="grid rulestable">
+          <tr><td>Team <b>wins</b></td><td class="num">No life lost</td></tr>
+          <tr><td>Team <b>draws</b></td><td class="num">&minus;1 life</td></tr>
+          <tr><td>Team <b>loses</b></td><td class="num">&minus;2 lives</td></tr>
+        </table>
+        <p>Drop <b>below 0</b> and you're eliminated — 0 is still alive. Whoever's standing last wins.</p>
+
+        <h3>Team limits</h3>
+        <p>Each team can be picked a <b>maximum of ${state.maxPicksPerTeam||2} times</b> by any one manager. Use it up,
+        and it's banned for you for the rest of the season — though other managers can still pick it.</p>
+
+        <h3>Wildcard <span class="rulestag">once per season</span></h3>
+        <p>Play it alongside a pick to insure against a draw. If your team draws, you keep the life you'd otherwise
+        lose. If it wins or loses, the Wildcard has no effect — and it's gone either way.</p>
+
+        <h3>Drawcard <span class="rulestag">once per season</span></h3>
+        <p>A side bet on the result being a draw, played alongside your normal pick:</p>
+        <table class="grid rulestable">
+          <tr><td>Game <b>draws</b></td><td class="num">+1 life</td></tr>
+          <tr><td>Game is a <b>win or loss</b></td><td class="num">&minus;1 life</td></tr>
+        </table>
+        <p>It's used the moment you play it, whatever the result.</p>
+        <p class="note">Wildcard and Drawcard can't both be played on the same pick in the same week.</p>
+
+        <h3>Missed picks</h3>
+        <p>If a manager doesn't get a pick in before the deadline, they're not skipped — they're auto-assigned the
+        <b>first away team</b> on that gameweek's fixture list that they haven't already used twice. If their first
+        away team is banned, it moves to the next one, and so on down the list.</p>
+
+        <h3>Final tiebreak</h3>
+        <p>If it comes down to a tie at the end of the season, it's settled in this order:</p>
+        <ol class="ruleslist">
+          <li>Last manager standing wins outright.</li>
+          <li>Otherwise, most lives remaining.</li>
+          <li>Still tied? Fewest losses.</li>
+          <li>Still tied? Lowest summed <b>league position</b> of each manager's remaining (still-pickable) teams —
+          i.e. whoever's still got the strongest teams in reserve. A team with only one use left counts double
+          toward that total, since it's half as useful a reserve as a fresh one.</li>
+        </ol>
+
+      </div></div>`;
 }
 
 /* --- Seasons: chooser, load, create --- */
