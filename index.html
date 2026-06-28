@@ -178,6 +178,18 @@
     border:1px solid var(--line);color:var(--ink);padding:11px 18px;border-radius:10px;box-shadow:var(--shadow);
     font-size:14px;z-index:60;opacity:0;transition:opacity .2s, transform .2s;pointer-events:none}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  /* login overlay */
+  .login{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:20px;
+    background:radial-gradient(900px 400px at 50% -120px, rgba(25,226,160,.10), transparent 60%), rgba(4,7,14,.92);
+    backdrop-filter:blur(4px)}
+  .login-card{width:100%;max-width:340px;background:var(--panel);border:1px solid var(--line);
+    border-radius:16px;padding:22px;box-shadow:var(--shadow)}
+  .login-crest{display:flex;align-items:center;gap:11px;margin-bottom:18px}
+  .login-title{font-family:var(--disp);font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:18px;line-height:1}
+  .login-sub{font-size:12px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-top:3px}
+  .login-lab{display:block;font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;
+    font-size:11.5px;color:var(--faint);margin:12px 0 5px}
+  .login-err{color:var(--danger);font-size:13px;min-height:18px;margin-top:8px}
   @media (max-width:680px){
     .row{grid-template-columns:24px 1fr 64px;gap:8px}
     .row .lives .pips{display:none}
@@ -202,6 +214,7 @@
     </div>
     <div class="spacer"></div>
     <span id="dataChip" class="chip local"><span class="dot"></span><span id="dataChipText">Local data</span></span>
+    <button id="signOut" class="btn ghost" style="display:none;padding:6px 12px;font-size:13px" onclick="signOutNow()">Sign out</button>
   </div>
 </header>
 
@@ -224,6 +237,25 @@
     <button data-tab="resolve">Resolve</button>
     <button data-tab="limits">Squad limits</button>
   </nav>
+</div>
+
+<div class="login" id="login" style="display:none">
+  <div class="login-card">
+    <div class="login-crest">
+      <svg viewBox="0 0 64 64" fill="none" width="34" height="34" aria-hidden="true">
+        <path d="M32 4c4 9 13 9 22 11-6 7-4 17-9 25-4 6-9 11-13 19-4-8-9-13-13-19-5-8-3-18-9-25 9-2 18-2 22-11z" stroke="#19e2a0" stroke-width="2.4" stroke-linejoin="round"/>
+        <circle cx="32" cy="30" r="7.5" fill="#0b1626" stroke="#eaf1fb" stroke-width="2"/>
+      </svg>
+      <div><div class="login-title">Kamikaze Football</div><div class="login-sub">Admin sign-in</div></div>
+    </div>
+    <label class="login-lab" for="liEmail">Email</label>
+    <input id="liEmail" type="text" autocomplete="username" placeholder="you@example.com">
+    <label class="login-lab" for="liPw">Password</label>
+    <input id="liPw" type="password" autocomplete="current-password" placeholder="••••••••">
+    <div class="login-err" id="liErr"></div>
+    <button class="btn" id="liBtn" style="width:100%;margin-top:4px">Sign in</button>
+    <p class="note" style="margin:12px 0 0;text-align:center">Only you have an account. Your browser stays signed in.</p>
+  </div>
 </div>
 
 <main class="wrap" id="view"></main>
@@ -252,10 +284,14 @@
 
 /* ---------- 1. FIREBASE (paste your config to go live across devices) ----- */
 const firebaseConfig = {
-  // apiKey: "…",
-  // authDomain: "…",
-  // databaseURL: "https://YOUR-PROJECT.firebaseio.com",
-  // projectId: "…",
+  apiKey: "AIzaSyCUda8nxOMprPFEiz8YoG3Zd0GvItdUw-Q",
+  authDomain: "kamikaze-football.firebaseapp.com",
+  databaseURL: "https://kamikaze-football-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "kamikaze-football",
+  storageBucket: "kamikaze-football.firebasestorage.app",
+  messagingSenderId: "669421775592",
+  appId: "1:669421775592:web:95a01da6a06059b579b75d",
+  measurementId: "G-7TE11W1DBX"
 };
 const DB_PATH = 'kamikaze_pl';   // change if you run more than one league
 
@@ -278,18 +314,53 @@ async function initStore(){
   }
   try{
     firebase.initializeApp(firebaseConfig);
-    fbRef = firebase.database().ref(DB_PATH);
-    const snap = await fbRef.get();
-    if(snap.exists()){ state = snap.val(); }
-    else { await fbRef.set(state); }            // first run: seed the DB
-    fbRef.on('value', s => { if(s.exists()){ state = s.val(); render(); } });
-    dataLive(true, 'Firebase · synced');
+    firebase.auth().onAuthStateChanged(user=>{
+      if(user){ hideLogin(); showSignOut(true); connectDb(); }
+      else { showSignOut(false); dataLive(false, 'Sign in to sync'); showLogin(); }
+    });
   }catch(e){
     console.warn('Firebase init failed, staying local:', e);
     dataLive(false, 'Firebase error · local');
   }
   render();
 }
+let dbConnected=false;
+async function connectDb(){
+  if(dbConnected) return; dbConnected=true;
+  try{
+    fbRef = firebase.database().ref(DB_PATH);
+    const snap = await fbRef.get();
+    if(snap.exists()){ state = snap.val(); }
+    else { await fbRef.set(state); }            // first run: seed the DB
+    fbRef.on('value', s => { if(s.exists()){ state = s.val(); render(); } });
+    dataLive(true, 'Firebase · synced');
+    render();
+  }catch(e){
+    console.warn('DB connect failed:', e);
+    dbConnected=false;
+    dataLive(false, 'No DB access · check rules');
+  }
+}
+function showLogin(){ const el=document.getElementById('login'); if(el) el.style.display='flex'; }
+function hideLogin(){ const el=document.getElementById('login'); if(el) el.style.display='none'; }
+function showSignOut(on){ const el=document.getElementById('signOut'); if(el) el.style.display = on?'inline-flex':'none'; }
+async function signIn(){
+  const email=document.getElementById('liEmail').value.trim();
+  const pw=document.getElementById('liPw').value;
+  const err=document.getElementById('liErr'); err.textContent='';
+  try{
+    await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    await firebase.auth().signInWithEmailAndPassword(email, pw);
+  }catch(e){
+    err.textContent =
+      (e.code==='auth/wrong-password'||e.code==='auth/invalid-credential') ? 'Wrong email or password.' :
+      e.code==='auth/user-not-found' ? 'No account with that email.' :
+      e.code==='auth/invalid-email' ? 'That doesn\u2019t look like an email address.' :
+      e.code==='auth/network-request-failed' ? 'Network error \u2014 check your connection.' :
+      (e.message || 'Sign-in failed.');
+  }
+}
+function signOutNow(){ if(typeof firebase!=='undefined' && firebase.auth){ dbConnected=false; firebase.auth().signOut(); } }
 function save(){
   if(fbRef){ fbRef.set(state).catch(e=>console.warn('save failed', e)); }
   render();
@@ -627,6 +698,9 @@ document.getElementById('tabs').addEventListener('click', e=>{
 });
 document.getElementById('gwUp').onclick = ()=>{ state.currentGw++; render(); };
 document.getElementById('gwDown').onclick = ()=>{ if(state.currentGw>1){ state.currentGw--; render(); } };
+document.getElementById('liBtn').onclick = signIn;
+['liEmail','liPw'].forEach(id=>document.getElementById(id)
+  .addEventListener('keydown', e=>{ if(e.key==='Enter') signIn(); }));
 
 let toastTimer;
 function toast(msg){
@@ -639,11 +713,17 @@ function toast(msg){
 (function boot(){
   const configured = firebaseConfig.databaseURL && firebaseConfig.apiKey;
   if(configured){
-    const a=document.createElement('script'); a.src='https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js';
-    const b=document.createElement('script'); b.src='https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js';
-    a.onload=()=>document.head.appendChild(b); b.onload=initStore;
-    a.onerror=initStore; b.onerror=initStore;
-    document.head.appendChild(a);
+    const urls=[
+      'https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js',
+      'https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js',
+      'https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js'
+    ];
+    (function load(i){
+      if(i>=urls.length){ initStore(); return; }
+      const s=document.createElement('script'); s.src=urls[i];
+      s.onload=()=>load(i+1); s.onerror=()=>load(i+1);
+      document.head.appendChild(s);
+    })(0);
   } else {
     initStore();
   }
