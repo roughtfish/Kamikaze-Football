@@ -551,13 +551,35 @@ function fmtTime(iso){
   if(!iso) return '';
   return new Date(iso).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/London'});
 }
+// builds an offscreen card, waits for any crest images to load, snapshots it
+// to a PNG, then shares (mobile) or downloads (fallback) it.
+async function exportCardAsShare(innerHtml, filename, shareTitle){
+  await ensureHtml2Canvas();
+  const card = document.createElement('div');
+  card.style.cssText = 'position:fixed;left:-9999px;top:0;width:460px;background:#101a2c;'+
+    'font-family:Barlow,system-ui,sans-serif;padding:24px;border-radius:16px;color:#eaf1fb;';
+  card.innerHTML = innerHtml;
+  document.body.appendChild(card);
+  // wait for crest images to actually load (or fail) before snapshotting
+  const imgs = [...card.querySelectorAll('.crestimg')];
+  await Promise.all(imgs.map(img=>img.complete ? Promise.resolve() :
+    new Promise(res=>{ img.onload=res; img.onerror=res; })));
+  const canvas = await html2canvas(card, {backgroundColor:'#101a2c', scale:2, useCORS:true});
+  document.body.removeChild(card);
+  const blob = await new Promise(res=>canvas.toBlob(res,'image/png'));
+  const file = new File([blob], filename, {type:'image/png'});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    await navigator.share({files:[file], title:shareTitle});
+  } else {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = file.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('Image downloaded — attach it to WhatsApp');
+  }
+}
 async function shareFixturesImage(gwNum, fixtures){
   if(!fixtures || !fixtures.length){ toast('No fixtures to share yet'); return; }
   try{
-    await ensureHtml2Canvas();
-    const card = document.createElement('div');
-    card.style.cssText = 'position:fixed;left:-9999px;top:0;width:460px;background:#101a2c;'+
-      'font-family:Barlow,system-ui,sans-serif;padding:24px;border-radius:16px;color:#eaf1fb;';
     let lastDay=null;
     const rows = fixtures.map(f=>{
       const day = fmtDay(f.kickoff);
@@ -576,30 +598,51 @@ async function shareFixturesImage(gwNum, fixtures){
         <span style="font-size:11px;color:#8ea0c0;width:42px;text-align:right;flex-shrink:0;">${time}</span>
       </div>`;
     }).join('');
-    card.innerHTML = `
+    const html = `
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
         <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
         <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
       </div>
       <div style="font-size:13px;color:#8ea0c0;margin-bottom:14px;">Gameweek ${gwNum} fixtures</div>
       <div style="border-top:1px solid #1c2a44;">${rows}</div>`;
-    document.body.appendChild(card);
-    // wait for crest images to actually load (or fail) before snapshotting
-    const imgs = [...card.querySelectorAll('.crestimg')];
-    await Promise.all(imgs.map(img=>img.complete ? Promise.resolve() :
-      new Promise(res=>{ img.onload=res; img.onerror=res; })));
-    const canvas = await html2canvas(card, {backgroundColor:'#101a2c', scale:2, useCORS:true});
-    document.body.removeChild(card);
-    const blob = await new Promise(res=>canvas.toBlob(res,'image/png'));
-    const file = new File([blob], `kamikaze-gw${gwNum}-fixtures.png`, {type:'image/png'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:`Gameweek ${gwNum} fixtures`});
-    } else {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = file.name;
-      document.body.appendChild(a); a.click(); a.remove();
-      toast('Image downloaded — attach it to WhatsApp');
-    }
+    await exportCardAsShare(html, `kamikaze-gw${gwNum}-fixtures.png`, `Gameweek ${gwNum} fixtures`);
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
+}
+async function shareStandingsImage(){
+  try{
+    const rows = sortedStandings();
+    let aliveRank=0, firstDead=true, rowsHtml='';
+    rows.forEach(m=>{
+      if(m.eliminated && firstDead){
+        rowsHtml += `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#ff5b7e;padding:14px 0 6px;">Eliminated</div>`;
+        firstDead=false;
+      }
+      if(!m.eliminated) aliveRank++;
+      const L = m.lives;
+      const liveColor = L<=2 ? '#ff5b7e' : L<=5 ? '#ffc043' : '#19e2a0';
+      const nameStyle = m.eliminated ? 'color:#5e7095;text-decoration:line-through;' : 'color:#eaf1fb;';
+      rowsHtml += `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1c2a44;">
+        <span style="width:22px;font-family:Barlow,sans-serif;font-weight:700;font-size:15px;color:${m.eliminated?'#5e7095':'#8ea0c0'};text-align:center;">${m.eliminated?'–':aliveRank}</span>
+        <span style="flex:1;font-size:14px;${nameStyle}">${m.name}</span>
+        <span style="font-family:ui-monospace,monospace;font-size:12.5px;color:#8ea0c0;width:58px;text-align:center;">${m.wins}·${m.draws}·${m.losses}</span>
+        <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:${liveColor};width:24px;text-align:right;">${L}</span>
+      </div>`;
+    });
+    const html = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
+        <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
+      </div>
+      <div style="font-size:13px;color:#8ea0c0;margin-bottom:6px;">Standings · Gameweek ${gw()} · ${aliveManagers().length} alive</div>
+      <div style="display:flex;gap:10px;padding:4px 0 8px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#5e7095;">
+        <span style="width:22px;text-align:center;">#</span><span style="flex:1;">Manager</span>
+        <span style="width:58px;text-align:center;">W·D·L</span><span style="width:24px;text-align:right;">Lives</span>
+      </div>
+      <div style="border-top:1px solid #1c2a44;">${rowsHtml}</div>`;
+    await exportCardAsShare(html, `kamikaze-${(state.season||'standings').replace(/\//g,'-')}-gw${gw()}-standings.png`, `${state.season||''} standings`);
   }catch(e){
     if(e && e.name === 'AbortError') return;
     toast('Image share failed: '+e.message);
@@ -699,8 +742,15 @@ function renderStandings(){
       <span class="bans">${bans}/20</span>
     </div>`;
   });
-  html += `</div></div>`;
+  html += `</div>
+    <div class="toolbar"><button class="btn ghost" id="shareStandings">Share standings image</button>
+      <span class="note" id="standingsShareNote"></span></div></div>`;
   view.innerHTML = html;
+  document.getElementById('shareStandings').onclick = async ()=>{
+    const note=document.getElementById('standingsShareNote'); note.textContent='Building image…';
+    try{ await shareStandingsImage(); note.textContent=''; }
+    catch(e){ note.textContent='Failed: '+e.message; }
+  };
   view.querySelectorAll('.cardpip').forEach(el=>{
     el.onclick = ()=>{
       const m = state.managers.find(x=>x.name===el.dataset.m);
