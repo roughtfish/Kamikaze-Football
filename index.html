@@ -585,6 +585,27 @@ async function shareFixturesImage(gwNum, fixtures){
     toast('Image share failed: '+e.message);
   }
 }
+// pulls the live PL table and sets each team's "strength" to its current league position
+// (1 = top). Lower summed position among a manager's *remaining* teams then correctly
+// means "still has strong teams in reserve" — matching the rulebook tiebreak exactly.
+async function fetchLiveTable(){
+  const res = await fetch(`${FD_PROXY_URL}?table=1`);
+  if(!res.ok) throw new Error(`Table proxy returned ${res.status}`);
+  const data = await res.json();
+  if(data.error) throw new Error(data.error);
+  const totalTable = (data.standings||[]).find(s=>s.type==='TOTAL');
+  const rows = totalTable ? totalTable.table : [];
+  let unmatched = 0, matched = 0;
+  rows.forEach(r=>{
+    const our = fdToOurName(r.team && r.team.name);
+    if(!our){ unmatched++; return; }
+    const t = state.teams.find(x=>x.name===our);
+    if(t){ t.strength = r.position; matched++; }
+  });
+  state.tableUpdatedAt = new Date().toISOString();
+  save();
+  return {matched, unmatched, total: rows.length};
+}
 // returns {events:[{home,away,homeScore,awayScore,finished}], unmatched:Number} or throws
 async function tsdbFetchRound(roundNum){
   const res = await fetch(`${FD_PROXY_URL}?matchday=${roundNum}`);
@@ -991,8 +1012,14 @@ function undoGameweek(n){
 
 /* --- Squad limits / bans --- */
 function renderLimits(){
+  const updated = state.tableUpdatedAt ? new Date(state.tableUpdatedAt).toLocaleString('en-GB',
+    {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
   let html = `<div class="panel"><div class="phead"><h2>Squad limits</h2>
     <span class="hint">Each team usable ${state.maxPicksPerTeam}× · then banned for that manager</span></div>
+    <div class="toolbar" style="border-top:0">
+      <button class="btn ghost" id="fetchTable">⇣ Update from live table</button>
+      <span class="note" id="tableFetchNote">${updated ? `Table positions as of ${updated}` : 'Not pulled yet — using placeholder order'}</span>
+    </div>
     <div style="overflow-x:auto"><table class="grid"><thead><tr><th>Manager</th><th class="num">Bans</th><th>Banned teams (used ${state.maxPicksPerTeam}×)</th><th class="num">Squad str</th></tr></thead><tbody>`;
   sortedStandings().forEach(m=>{
     const banned = state.teams.filter(t=>isBanned(m,t.name)).map(t=>t.name);
@@ -1003,8 +1030,18 @@ function renderLimits(){
       <td class="num">${remainingStrengthSum(m)}</td></tr>`;
   });
   html += `</tbody></table></div>
-    <div class="toolbar"><span class="note">“Squad str” = summed strength of teams still available — the final tiebreak (lower wins).</span></div></div>`;
+    <div class="toolbar"><span class="note">“Squad str” = sum of the live league position of every team a manager hasn't already used twice. Lowest wins the final tiebreak — it means they've still got strong teams in reserve, exactly as the rulebook's tiebreak intends.</span></div></div>`;
   view.innerHTML = html;
+  document.getElementById('fetchTable').onclick = async ()=>{
+    const note=document.getElementById('tableFetchNote'); note.textContent='Fetching…';
+    try{
+      const {matched, unmatched, total} = await fetchLiveTable();
+      toast(`Updated ${matched} team position${matched===1?'':'s'}${unmatched?` (${unmatched} unmatched)`:''}`);
+      setTab('limits');
+    }catch(e){
+      note.textContent = 'Fetch failed: '+e.message;
+    }
+  };
 }
 
 /* --- Seasons: chooser, load, create --- */
