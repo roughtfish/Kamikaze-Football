@@ -238,7 +238,10 @@ function renderStats(snap){
       <div class="legend">WC = Wildcard · DC = Drawcard · ✓ successful (drew) · ✗ unsuccessful · outline = not used yet</div>
     </div>
     ${ptvHtml}
-    <p class="footnote">Last updated ${published}</p>`;
+    <p class="footnote">Last updated ${published}</p>
+    <p class="footnote" style="margin-top:6px">
+      <a href="${window.location.href}" style="color:var(--muted);font-size:12px;" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>alert('Link copied!'))">📋 Copy link to share with players</a>
+    </p>`;
 }
 
 function renderRulesPage(){
