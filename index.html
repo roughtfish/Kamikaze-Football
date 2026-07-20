@@ -255,6 +255,7 @@
     </div>
     <div class="spacer"></div>
     <span id="dataChip" class="chip local"><span class="dot"></span><span id="dataChipText">Local data</span></span>
+    <a href="stats.html" target="_blank" class="chip" style="text-decoration:none">↗ Player stats</a>
     <button id="signOut" class="btn ghost" style="display:none;padding:6px 12px;font-size:13px" onclick="signOutNow()">Sign out</button>
   </div>
 </header>
@@ -925,6 +926,7 @@ function renderStandings(){
   html += `</div>
     <div class="toolbar"><button class="btn ghost" id="shareStandings">Share standings image</button>
       <button class="btn ghost" id="publishStats">Publish to player stats page</button>
+      <a href="stats.html" target="_blank" class="btn ghost" style="text-decoration:none">↗ Open stats page</a>
       <span class="note" id="standingsShareNote"></span></div></div>`;
   view.innerHTML = html;
   document.getElementById('shareStandings').onclick = async ()=>{
