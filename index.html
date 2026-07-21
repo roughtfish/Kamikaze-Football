@@ -383,7 +383,7 @@ async function initStore(){
   if(!configured || typeof firebase === 'undefined'){
     root = migrate(null); activeId = root.active; state = root.seasons[activeId];
     dataLive(false, configured ? 'Firebase unreachable · local' : 'Local data (no sync)');
-    stateLoaded = true; viewGw = null;
+    stateLoaded = true; viewGw = null; for(const k in savedAtByGw) delete savedAtByGw[k];
     render(); return;
   }
   try{
@@ -396,7 +396,7 @@ async function initStore(){
     console.warn('Firebase init failed, staying local:', e);
     root = migrate(null); activeId = root.active; state = root.seasons[activeId];
     dataLive(false, 'Firebase error · local');
-    stateLoaded = true; viewGw = null;
+    stateLoaded = true; viewGw = null; for(const k in savedAtByGw) delete savedAtByGw[k];
   }
   render();
 }
@@ -421,7 +421,7 @@ async function connectDb(){
     // preload whatever was active last, so data's ready the instant a choice is
     // made — but always show the chooser so login is where you pick the game
     if(root.active && root.seasons && root.seasons[root.active]){
-      activeId = root.active; state = root.seasons[root.active]; stateLoaded = true; viewGw = null;
+      activeId = root.active; state = root.seasons[root.active]; stateLoaded = true; viewGw = null; for(const k in savedAtByGw) delete savedAtByGw[k];
     }
     showChooser('list');
   }catch(e){
@@ -454,13 +454,14 @@ let stateLoaded = false;   // true only once this session has loaded real season
 function save(){
   if(!stateLoaded){
     console.warn('save() blocked — no season loaded into this session yet, refusing to write stale/placeholder data');
-    return;
+    return false;
   }
   if(activeId && root && root.seasons){ root.seasons[activeId] = state; }
   if(fbRef && activeId){
     firebase.database().ref(`${DB_PATH}/seasons/${activeId}`).set(state).catch(e=>console.warn('save failed', e));
   }
   render();
+  return true;
 }
 function normaliseUsed(){ state.managers.forEach(m=>{ m.used = m.used||{}; m.picks = m.picks||{}; }); }
 
@@ -498,6 +499,7 @@ function materializeAutos(g){
   });
 }
 let viewGw = null;   // which gameweek you're currently looking at — may differ from state.currentGw
+const savedAtByGw = {};   // last successful picks-save time per gameweek, this session only
 function gw(){ return viewGw != null ? viewGw : state.currentGw; }
 function isViewingCurrentGw(){ return gw() === state.currentGw; }
 function jumpToCurrentGw(){ viewGw = state.currentGw; render(); }
@@ -1089,8 +1091,11 @@ function renderPicks(){
       </span>
     </div>`;
   });
+  const savedAt = savedAtByGw[n];
+  const savedNote = savedAt ? `<span class="note" style="color:var(--go)">✓ Saved at ${savedAt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</span>` : '';
   html += `<div class="toolbar">
       <button class="btn" id="savePicks">Save picks</button>
+      ${savedNote}
       <span class="note" id="pickCount"></span>
       <span class="spacer"></span>
       <button class="btn ghost" id="goResolve">Go to resolve ›</button>
@@ -1156,7 +1161,15 @@ function updatePickCount(){
   const el = document.getElementById('pickCount');
   if(el) el.textContent = `${got}/${aliveManagers().length} entered`;
 }
-function savePicks(){ readPicksFromForm(); save(); toast('Picks saved'); updatePickCount(); }
+function savePicks(){
+  readPicksFromForm();
+  const n = gw();
+  savedAtByGw[n] = new Date();   // set before save() so the render it triggers already shows it
+  const ok = save();
+  if(ok){ toast('Picks saved'); }
+  else { delete savedAtByGw[n]; toast('Save failed — check your connection and try again'); }
+  updatePickCount();
+}
 
 /* --- Resolve --- */
 function renderResolve(){
@@ -1244,8 +1257,13 @@ function renderResolve(){
   view.querySelectorAll('.fixrow .seg button').forEach(b=>{
     b.onclick = ()=>{
       const team = b.closest('.fixrow').dataset.team;
-      g.results[team] = b.dataset.r; save();   // re-renders, keeps it simple
-      setTab('resolve');
+      g.results[team] = b.dataset.r;
+      // apply the highlight immediately, independent of render timing —
+      // save() will re-render anyway, but this guarantees instant feedback
+      const seg = b.closest('.seg');
+      seg.querySelectorAll('button').forEach(x=>x.classList.remove('on','H','D','A'));
+      b.classList.add('on', b.dataset.r==='W' ? 'H' : b.dataset.r==='D' ? 'D' : 'A');
+      save();
     };
   });
   document.getElementById('applyGw').onclick = ()=>applyGameweek(n);
@@ -1602,7 +1620,7 @@ function deleteSeason(id){
 }
 function loadSeason(id){
   if(!root || !root.seasons || !root.seasons[id]) return;
-  activeId=id; state=root.seasons[id]; root.active=id; stateLoaded=true; viewGw=null;
+  activeId=id; state=root.seasons[id]; root.active=id; stateLoaded=true; viewGw=null; for(const k in savedAtByGw) delete savedAtByGw[k];
   if(fbRef){ firebase.database().ref(`${DB_PATH}/active`).set(id).catch(()=>{}); }
   hideChooser(); setTab('standings'); toast(`Loaded ${state.season||id}`);
   autoPublishStats();
@@ -1617,7 +1635,7 @@ function createSeason(label, names){
   };
   const id = uniqueId(label);
   root = root || {seasons:{}}; root.seasons = root.seasons || {};
-  root.seasons[id]=fresh; root.active=id; activeId=id; state=fresh; stateLoaded=true; viewGw=null;
+  root.seasons[id]=fresh; root.active=id; activeId=id; state=fresh; stateLoaded=true; viewGw=null; for(const k in savedAtByGw) delete savedAtByGw[k];
   if(fbRef){
     firebase.database().ref(`${DB_PATH}/seasons/${id}`).set(fresh).catch(e=>console.warn(e));
     firebase.database().ref(`${DB_PATH}/active`).set(id).catch(()=>{});
