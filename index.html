@@ -1092,10 +1092,10 @@ function renderPicks(){
     </div>`;
   });
   const savedAt = savedAtByGw[n];
-  const savedNote = savedAt ? `<span class="note" style="color:var(--go)">✓ Saved at ${savedAt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</span>` : '';
+  const savedNoteText = savedAt ? `✓ Saved at ${savedAt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}` : '';
   html += `<div class="toolbar">
       <button class="btn" id="savePicks">Save picks</button>
-      ${savedNote}
+      <span class="note" id="savedNote" style="color:var(--go)">${savedNoteText}</span>
       <span class="note" id="pickCount"></span>
       <span class="spacer"></span>
       <button class="btn ghost" id="goResolve">Go to resolve ›</button>
@@ -1164,11 +1164,25 @@ function updatePickCount(){
 function savePicks(){
   readPicksFromForm();
   const n = gw();
-  savedAtByGw[n] = new Date();   // set before save() so the render it triggers already shows it
-  const ok = save();
-  if(ok){ toast('Picks saved'); }
-  else { delete savedAtByGw[n]; toast('Save failed — check your connection and try again'); }
+  const ok = save();   // save() re-renders the tab, which rebuilds #savedNote from savedAtByGw
+  const now = new Date();
+  if(ok){
+    savedAtByGw[n] = now;
+    toast('Picks saved');
+  } else {
+    delete savedAtByGw[n];
+    toast('Save failed — check your connection and try again');
+  }
   updatePickCount();
+  // belt-and-braces: write the note directly too, so it shows even if the
+  // render pass somehow didn't pick up the fresh savedAtByGw entry
+  const el = document.getElementById('savedNote');
+  if(el){
+    el.style.color = ok ? 'var(--go)' : 'var(--danger)';
+    el.textContent = ok
+      ? `✓ Saved at ${now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`
+      : '✗ Save failed';
+  }
 }
 
 /* --- Resolve --- */
