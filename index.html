@@ -417,14 +417,12 @@ async function connectDb(){
       }
     });
     dataLive(true, 'Firebase · synced');
-    // resume whatever season was active last time, rather than making you choose
-    // again on every reload — the chooser is still one tap away on the Season tab
+    // preload whatever was active last, so data's ready the instant a choice is
+    // made — but always show the chooser so login is where you pick the game
     if(root.active && root.seasons && root.seasons[root.active]){
       activeId = root.active; state = root.seasons[root.active]; stateLoaded = true;
-      render();
-    } else {
-      showChooser();   // no active season on record — genuinely need a choice here
     }
+    showChooser('list');
   }catch(e){
     console.warn('DB connect failed:', e);
     dbConnected=false;
