@@ -758,6 +758,33 @@ const TEAM_COLORS = {
   'West Ham':'#7A263A', 'Wolves':'#FDB913'
 };
 function teamColor(name, i){ return TEAM_COLORS[name] || PIE_COLORS[i % PIE_COLORS.length]; }
+// html2canvas can't rasterize CSS conic-gradient, so draw the pie as real
+// pixels on a canvas and embed it as a plain <img> — that snapshots reliably
+function drawPieDataUrl(entries, total, size=200){
+  const canvas = document.createElement('canvas');
+  const scale = 2;   // sharper on high-DPI phone screens
+  canvas.width = size*scale; canvas.height = size*scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  const cx=size/2, cy=size/2, r=size/2 - 1;
+  let start = -Math.PI/2;
+  entries.forEach((e,i)=>{
+    const slice = (e.count/total)*Math.PI*2;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,r,start,start+slice);
+    ctx.closePath();
+    ctx.fillStyle = teamColor(e.team,i);
+    ctx.fill();
+    start += slice;
+  });
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = '#1c2a44';
+  ctx.stroke();
+  return canvas.toDataURL('image/png');
+}
 async function shareGwPicksPie(gwNum, g){
   try{
     const byTeam = {};
@@ -769,15 +796,7 @@ async function shareGwPicksPie(gwNum, g){
       .sort((a,b)=>b.count-a.count);
     if(!entries.length){ toast('No picks to chart yet'); return; }
     const total = entries.reduce((s,e)=>s+e.count,0);
-
-    let cumulative = 0;
-    const stops = entries.map((e,i)=>{
-      const pct = e.count/total*100;
-      const color = teamColor(e.team, i);
-      const stop = `${color} ${cumulative}% ${cumulative+pct}%`;
-      cumulative += pct;
-      return stop;
-    }).join(', ');
+    const pieUrl = drawPieDataUrl(entries, total);
 
     const legend = entries.map((e,i)=>{
       const color = teamColor(e.team, i);
@@ -799,7 +818,7 @@ async function shareGwPicksPie(gwNum, g){
       </div>
       <div style="font-size:13px;color:#8ea0c0;margin-bottom:16px;">Gameweek ${gwNum} picks · ${total} total</div>
       <div style="display:flex;justify-content:center;margin-bottom:16px;">
-        <div style="width:200px;height:200px;border-radius:50%;background:conic-gradient(${stops});box-shadow:0 0 0 1px #1c2a44 inset;"></div>
+        <img src="${pieUrl}" width="200" height="200" style="border-radius:50%;display:block;">
       </div>
       <div style="border-top:1px solid #1c2a44;">${legend}</div>`;
     await exportCardAsShare(html, `kamikaze-gw${gwNum}-picks-chart.png`, `Gameweek ${gwNum} picks`);
