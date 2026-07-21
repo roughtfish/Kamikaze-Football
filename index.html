@@ -1567,11 +1567,13 @@ function renderSeason(){
       <div style="padding:14px 16px;display:grid;gap:12px">
         <div class="okbox">Loaded: <b>${state.season||'—'}</b> · ${seasonSummary(state)}</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn" id="switchSeason">Switch or start a season</button>
+          <button class="btn" id="newSeason">+ Start a new season</button>
+          <button class="btn ghost" id="switchSeason">Switch season</button>
           <button class="btn ghost" id="backup">Download backup (.json)</button>
         </div>
-        <p class="note">“Switch or start a season” opens the same chooser you get at login — load a past season or begin a new one. Starting a new season keeps the others intact.</p>
+        <p class="note">"Start a new season" creates a fresh slate while keeping all previous seasons intact. "Switch season" lets you load or delete a past season.</p>
       </div></div>`;
+  document.getElementById('newSeason').onclick=()=>{ seasonDraft=null; showChooser('new'); };
   document.getElementById('switchSeason').onclick=()=>showChooser('list');
   document.getElementById('backup').onclick=exportBackup;
 }
