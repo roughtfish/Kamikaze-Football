@@ -130,6 +130,7 @@
       <div class="sub">Player stats</div>
     </div>
     <div class="spacer"></div>
+    <span class="chip" id="gwChip" style="display:none"></span>
     <span class="chip" id="liveChip"><span class="dot"></span>Live</span>
   </div>
   <div class="wrap">
@@ -172,6 +173,13 @@ function cardPip(label, usedFlag, result){
 
 function render(snap){
   latestSnap = snap;
+  const gwChip = document.getElementById('gwChip');
+  if(snap && snap.gw){
+    gwChip.style.display = 'inline-flex';
+    gwChip.innerHTML = `<span class="dot" style="background:var(--go)"></span>GW ${snap.gw}`;
+  } else {
+    gwChip.style.display = 'none';
+  }
   if(activeTab==='rules'){ renderRulesPage(); return; }
   if(activeTab==='history'){ renderHistoryPage(); return; }
   renderStats(snap);
