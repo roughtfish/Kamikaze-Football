@@ -665,14 +665,49 @@ async function exportCardAsShare(innerHtml, filename, shareTitle){
   document.body.removeChild(card);
   const blob = await new Promise(res=>canvas.toBlob(res,'image/png'));
   const file = new File([blob], filename, {type:'image/png'});
-  if(navigator.canShare && navigator.canShare({files:[file]})){
-    await navigator.share({files:[file], title:shareTitle});
-  } else {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = file.name;
-    document.body.appendChild(a); a.click(); a.remove();
-    toast('Image downloaded — attach it to WhatsApp');
-  }
+  await showSharePreview(blob, file, shareTitle);
+}
+function showSharePreview(blob, file, shareTitle){
+  return new Promise(resolve=>{
+    const url = URL.createObjectURL(blob);
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;'+
+      'padding:20px;background:rgba(4,7,14,.92);backdrop-filter:blur(4px);';
+    overlay.innerHTML = `
+      <div style="width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);
+        border-radius:16px;padding:18px;box-shadow:var(--shadow);max-height:90vh;overflow-y:auto;">
+        <div style="font-family:var(--disp);text-transform:uppercase;letter-spacing:.04em;font-size:14px;
+          color:var(--muted);margin-bottom:12px;">Preview</div>
+        <img src="${url}" style="width:100%;border-radius:10px;display:block;margin-bottom:16px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn ghost" id="previewCancel" style="flex:1;">Cancel</button>
+          <button class="btn ghost" id="previewDownload" style="flex:1;">Download</button>
+          <button class="btn" id="previewShare" style="flex:1;">Share</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const cleanup = ()=>{ document.body.removeChild(overlay); URL.revokeObjectURL(url); resolve(); };
+    overlay.querySelector('#previewCancel').onclick = cleanup;
+    overlay.querySelector('#previewDownload').onclick = ()=>{
+      const a = document.createElement('a');
+      a.href = url; a.download = file.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      toast('Image downloaded');
+      cleanup();
+    };
+    overlay.querySelector('#previewShare').onclick = async ()=>{
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        try{ await navigator.share({files:[file], title:shareTitle}); }
+        catch(e){ if(e && e.name!=='AbortError') toast('Share failed: '+e.message); }
+      } else {
+        const a = document.createElement('a');
+        a.href = url; a.download = file.name;
+        document.body.appendChild(a); a.click(); a.remove();
+        toast('Image downloaded — attach it to WhatsApp');
+      }
+      cleanup();
+    };
+  });
 }
 async function shareFixturesImage(gwNum, fixtures){
   if(!fixtures || !fixtures.length){ toast('No fixtures to share yet'); return; }
