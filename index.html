@@ -269,6 +269,7 @@
       <button id="gwUp" title="Next">›</button>
     </div>
     <span class="gwstate" id="gwState"></span>
+    <span class="chip" id="notCurrentChip" style="display:none;cursor:pointer" title="Click to jump back to the current gameweek"></span>
     <div class="spacer" style="flex:1"></div>
     <span class="chip" id="aliveChip"><span class="dot" style="background:var(--go)"></span><span id="aliveCount">—</span> alive</span>
   </div>
@@ -382,7 +383,7 @@ async function initStore(){
   if(!configured || typeof firebase === 'undefined'){
     root = migrate(null); activeId = root.active; state = root.seasons[activeId];
     dataLive(false, configured ? 'Firebase unreachable · local' : 'Local data (no sync)');
-    stateLoaded = true;
+    stateLoaded = true; viewGw = null;
     render(); return;
   }
   try{
@@ -395,7 +396,7 @@ async function initStore(){
     console.warn('Firebase init failed, staying local:', e);
     root = migrate(null); activeId = root.active; state = root.seasons[activeId];
     dataLive(false, 'Firebase error · local');
-    stateLoaded = true;
+    stateLoaded = true; viewGw = null;
   }
   render();
 }
@@ -420,7 +421,7 @@ async function connectDb(){
     // preload whatever was active last, so data's ready the instant a choice is
     // made — but always show the chooser so login is where you pick the game
     if(root.active && root.seasons && root.seasons[root.active]){
-      activeId = root.active; state = root.seasons[root.active]; stateLoaded = true;
+      activeId = root.active; state = root.seasons[root.active]; stateLoaded = true; viewGw = null;
     }
     showChooser('list');
   }catch(e){
@@ -496,7 +497,10 @@ function materializeAutos(g){
     if(auto) g.picks[m.name] = {team:auto, auto:true, wildcard:(p&&p.wildcard)||false, drawcard:(p&&p.drawcard)||false};
   });
 }
-function gw(){ return state.currentGw; }
+let viewGw = null;   // which gameweek you're currently looking at — may differ from state.currentGw
+function gw(){ return viewGw != null ? viewGw : state.currentGw; }
+function isViewingCurrentGw(){ return gw() === state.currentGw; }
+function jumpToCurrentGw(){ viewGw = state.currentGw; render(); }
 function gwObj(n, create){
   state.gameweeks = state.gameweeks || {};
   if(!state.gameweeks[n] && create) state.gameweeks[n] = {status:'open', fixtures:[], results:{}, picks:{}};
@@ -932,6 +936,14 @@ function render(){
     st==='resolved' ? 'Status · <b>resolved</b>' :
     st==='locked'   ? 'Status · locked' : 'Status · open';
   document.getElementById('aliveCount').textContent = aliveManagers().length;
+  const notCurrent = document.getElementById('notCurrentChip');
+  if(isViewingCurrentGw()){
+    notCurrent.style.display = 'none';
+  } else {
+    notCurrent.style.display = 'inline-flex';
+    notCurrent.innerHTML = `<span class="dot" style="background:var(--warn)"></span>Viewing GW ${gw()} · current is GW ${state.currentGw} — tap to jump`;
+    notCurrent.onclick = jumpToCurrentGw;
+  }
   ({standings:renderStandings, picks:renderPicks, resolve:renderResolve, limits:renderLimits, season:renderSeason, rules:renderRules, history:renderHistory}[activeTab])();
 }
 
@@ -1336,6 +1348,7 @@ function applyGameweek(n){
   });
   g.status = 'resolved';
   state.currentGw = n + 1;
+  viewGw = state.currentGw;
   save();
   toast(`Gameweek ${n} applied`);
   setTab('standings');
@@ -1356,6 +1369,7 @@ function undoGameweek(n){
       used:structuredClone(s.used)});
   });
   delete g._undo; g.status = 'open'; state.currentGw = n;
+  viewGw = state.currentGw;
   save(); toast(`Gameweek ${n} reopened`); setTab('resolve');
   autoPublishStats();
 }
@@ -1588,7 +1602,7 @@ function deleteSeason(id){
 }
 function loadSeason(id){
   if(!root || !root.seasons || !root.seasons[id]) return;
-  activeId=id; state=root.seasons[id]; root.active=id; stateLoaded=true;
+  activeId=id; state=root.seasons[id]; root.active=id; stateLoaded=true; viewGw=null;
   if(fbRef){ firebase.database().ref(`${DB_PATH}/active`).set(id).catch(()=>{}); }
   hideChooser(); setTab('standings'); toast(`Loaded ${state.season||id}`);
   autoPublishStats();
@@ -1603,7 +1617,7 @@ function createSeason(label, names){
   };
   const id = uniqueId(label);
   root = root || {seasons:{}}; root.seasons = root.seasons || {};
-  root.seasons[id]=fresh; root.active=id; activeId=id; state=fresh; stateLoaded=true;
+  root.seasons[id]=fresh; root.active=id; activeId=id; state=fresh; stateLoaded=true; viewGw=null;
   if(fbRef){
     firebase.database().ref(`${DB_PATH}/seasons/${id}`).set(fresh).catch(e=>console.warn(e));
     firebase.database().ref(`${DB_PATH}/active`).set(id).catch(()=>{});
@@ -1650,8 +1664,8 @@ function setTab(t){
 document.getElementById('tabs').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(b) setTab(b.dataset.tab);
 });
-document.getElementById('gwUp').onclick = ()=>{ state.currentGw++; render(); };
-document.getElementById('gwDown').onclick = ()=>{ if(state.currentGw>1){ state.currentGw--; render(); } };
+document.getElementById('gwUp').onclick = ()=>{ viewGw = gw()+1; render(); };
+document.getElementById('gwDown').onclick = ()=>{ if(gw()>1){ viewGw = gw()-1; render(); } };
 document.getElementById('liBtn').onclick = signIn;
 ['liEmail','liPw'].forEach(id=>document.getElementById(id)
   .addEventListener('keydown', e=>{ if(e.key==='Enter') signIn(); }));
