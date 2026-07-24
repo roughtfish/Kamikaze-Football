@@ -312,6 +312,109 @@ function renderStats(snap){
       </div>
     </div>` : '';
 
+  // Form guide
+  const form = (snap.formGuide||[]);
+  let formHtml = '';
+  if(form.length){
+    const chip = r => r ? `<span class="histres ${r==='W'?'go':r==='L'?'danger':'warn'}" style="margin:0 2px">${r}</span>` : '<span class="note" style="margin:0 4px">–</span>';
+    formHtml = `<div class="panel"><div class="phead"><h2>Form guide</h2>
+        <span class="hint">Last 5 resolved gameweeks, oldest to newest</span></div>
+      <div style="padding:6px 16px 10px">
+        ${form.map(t=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line-soft);">
+          <span style="font-size:13px;${t.eliminated?'color:var(--faint);text-decoration:line-through;':''}">${t.name}</span>
+          <span>${t.form.map(chip).join('')}</span>
+        </div>`).join('')}
+      </div></div>`;
+  }
+
+  // Biggest rivalry
+  const rivalries = snap.rivalries || [];
+  let rivalryHtml = '';
+  if(rivalries.length){
+    const top = rivalries[0];
+    rivalryHtml = `<div class="panel"><div class="phead"><h2>Biggest rivalry</h2></div>
+      <div style="padding:14px 16px;text-align:center;">
+        <div style="font-family:var(--disp);font-weight:700;font-size:19px;color:var(--ink);">${top.a} <span style="color:var(--faint);font-weight:400;">vs</span> ${top.b}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px;">Faced off ${top.count} time${top.count===1?'':'s'} this season · ${top.aWins}-${top.draws}-${top.bWins}</div>
+      </div></div>`;
+  }
+
+  // Head to head leaderboard already computed above as h2hHtml; team performance next
+  const teamPerf = (snap.teamPerformance||[]).filter(t=>t.picks>=2);
+  let teamPerfHtml = '';
+  if(teamPerf.length){
+    teamPerfHtml = `<div class="panel"><div class="phead"><h2>Team performance</h2>
+        <span class="hint">Win rate when actually picked (2+ picks) · safest at top</span></div>
+      <div style="padding:6px 16px 10px">
+        ${teamPerf.map(t=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line-soft);">
+          <span style="font-size:13px;">${t.team}</span>
+          <span style="font-family:var(--num);font-size:12.5px;color:var(--muted);">${t.picks} picks · <b style="color:var(--ink)">${t.wins}</b>·${t.draws}·${t.losses} · ${Math.round(t.winRate*100)}%</span>
+        </div>`).join('')}
+      </div></div>`;
+  }
+
+  // Contrarian & copycat
+  const contrarian = (snap.contrarianCopycat||[]).filter(t=>t.played>0).sort((a,b)=>b.contrarian-a.contrarian);
+  let contrarianHtml = '';
+  if(contrarian.length){
+    contrarianHtml = `<div class="panel"><div class="phead"><h2>Contrarian &amp; copycat</h2>
+        <span class="hint">Times picking alone vs times picking the week's most popular team</span></div>
+      <div class="board">
+        <div class="row head" style="grid-template-columns:28px 1fr 70px 70px"><span>#</span><span>Manager</span><span>Alone</span><span>Crowd</span></div>
+        ${contrarian.map((t,i)=>`<div class="row mgr" style="grid-template-columns:28px 1fr 70px 70px">
+          <span class="rank ${i===0?'lead':''}">${i+1}</span>
+          <span class="who"><span class="nm">${t.name}</span></span>
+          <span class="wdl">${t.contrarian}</span>
+          <span class="wdl">${t.copycat}</span>
+        </div>`).join('')}
+      </div></div>`;
+  }
+
+  // Card timing
+  const cardTiming = snap.cardTiming || [];
+  let cardTimingHtml = '';
+  if(cardTiming.length){
+    const cell = (gwNum, res) => gwNum===null ? '<span class="note">unused</span>'
+      : `GW${gwNum} <span class="histres ${res==='D'?'go':'danger'}">${res==='D'?'✓':'✗'}</span>`;
+    cardTimingHtml = `<div class="panel"><div class="phead"><h2>Card timing</h2>
+        <span class="hint">Which gameweek each card was played, and whether it paid off</span></div>
+      <div style="padding:6px 16px 10px">
+        ${cardTiming.map(t=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-soft);">
+          <span style="font-size:13px;">${t.name}</span>
+          <span style="font-size:12.5px;color:var(--muted);">WC: ${cell(t.wildcardGw,t.wildcardResult)} · DC: ${cell(t.drawcardGw,t.drawcardResult)}</span>
+        </div>`).join('')}
+      </div></div>`;
+  }
+
+  // Living dangerously
+  const livingDangerously = snap.livingDangerously || [];
+  let livingHtml = '';
+  if(livingDangerously.length){
+    livingHtml = `<div class="panel"><div class="phead"><h2>Living dangerously</h2>
+        <span class="hint">Gameweeks spent on exactly 1 life</span></div>
+      <div class="board">
+        <div class="row head" style="grid-template-columns:28px 1fr 70px"><span>#</span><span>Manager</span><span>Weeks</span></div>
+        ${livingDangerously.map((t,i)=>`<div class="row mgr" style="grid-template-columns:28px 1fr 70px">
+          <span class="rank ${i===0?'lead':''}">${i+1}</span>
+          <span class="who"><span class="nm">${t.name}</span></span>
+          <span class="wdl">${t.count}</span>
+        </div>`).join('')}
+      </div></div>`;
+  }
+
+  // Season extremes
+  const ext = snap.seasonExtremes;
+  let extHtml = '';
+  const ordSuffix = n => { const j=n%10,k=n%100; if(j===1&&k!==11)return'st'; if(j===2&&k!==12)return'nd'; if(j===3&&k!==13)return'rd'; return'th'; };
+  if(ext && (ext.biggestUpset || ext.bestSwing || ext.worstSwing)){
+    const lines = [];
+    if(ext.biggestUpset) lines.push(`<b>Biggest upset:</b> ${ext.biggestUpset.manager} backed ${ext.biggestUpset.team} (ranked ${ext.biggestUpset.position}${ordSuffix(ext.biggestUpset.position)} at the time) in GW${ext.biggestUpset.gw} — and won.`);
+    if(ext.bestSwing && ext.bestSwing.delta>0) lines.push(`<b>Best single week:</b> ${ext.bestSwing.manager} gained ${ext.bestSwing.delta} life in GW${ext.bestSwing.gw} (${ext.bestSwing.team}, Drawcard hit).`);
+    if(ext.worstSwing && ext.worstSwing.delta<0) lines.push(`<b>Worst single week:</b> ${ext.worstSwing.manager} lost ${Math.abs(ext.worstSwing.delta)} life${Math.abs(ext.worstSwing.delta)===1?'':'s'} in GW${ext.worstSwing.gw} (${ext.worstSwing.team}, ${ext.worstSwing.result==='L'?'loss':'draw'}).`);
+    extHtml = `<div class="panel"><div class="phead"><h2>Season extremes</h2></div>
+      <div style="padding:8px 16px 14px;display:grid;gap:8px;font-size:13.5px;color:var(--muted);">${lines.map(l=>`<div>${l}</div>`).join('')}</div></div>`;
+  }
+
   view.innerHTML = `
     ${championHtml}
     <div class="panel">
@@ -320,8 +423,15 @@ function renderStats(snap){
       <div class="board">${rowsHtml}</div>
       <div class="legend">WC = Wildcard · DC = Drawcard · ✓ successful (drew) · ✗ unsuccessful · outline = not used yet</div>
     </div>
+    ${formHtml}
+    ${rivalryHtml}
     ${ptvHtml}
     ${h2hHtml}
+    ${teamPerfHtml}
+    ${contrarianHtml}
+    ${cardTimingHtml}
+    ${livingHtml}
+    ${extHtml}
     ${autoPickHtml}
     <p class="footnote">Last updated ${published}</p>
     <p class="footnote" style="margin-top:6px">
