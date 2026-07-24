@@ -335,13 +335,21 @@ function renderHistoryPage(){
   }
   const mgrs = (snap.managerOrder && snap.managerOrder.length) ? snap.managerOrder : (snap.managers||[]).map(m=>m.name);
   const head = `<tr><th>GW</th>${mgrs.map(n=>`<th>${n}</th>`).join('')}</tr>`;
+  const cardBadge = (label, res) => {
+    const cls = !res ? '' : (res==='D' ? 'go' : 'danger');
+    return `<span class="histres ${cls}">${label}</span>`;
+  };
   const rows = history.map(g=>{
     const cells = mgrs.map(name=>{
       const p = g.picks && g.picks[name];
       if(!p || !p.team) return `<td class="histcell"><span class="note">—</span></td>`;
       const resTag = (g.resolved && p.result) ? `<span class="histres ${p.result==='W'?'go':p.result==='L'?'danger':'warn'}">${p.result}</span>` : '';
-      const flags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
-      return `<td class="histcell"><span class="histteam">${p.team}</span>${resTag}${flags?`<span class="note" style="display:block">${flags}</span>`:''}</td>`;
+      const flagParts = [];
+      if(p.auto) flagParts.push(`<span class="note">auto</span>`);
+      if(p.wildcard) flagParts.push(cardBadge('WC', g.resolved ? p.result : null));
+      if(p.drawcard) flagParts.push(cardBadge('DC', g.resolved ? p.result : null));
+      const flagsHtml = flagParts.length ? `<span style="display:block;margin-top:2px">${flagParts.join(' ')}</span>` : '';
+      return `<td class="histcell"><span class="histteam">${p.team}</span>${resTag}${flagsHtml}</td>`;
     }).join('');
     return `<tr><td class="num"><b>${g.gw}</b>${g.resolved?'':' <span class="note">open</span>'}</td>${cells}</tr>`;
   }).join('');
