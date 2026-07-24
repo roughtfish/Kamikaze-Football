@@ -133,6 +133,9 @@
   .row.out .nm{text-decoration:line-through}
   .outtag{font-family:var(--disp);font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--danger);
     border:1px solid var(--danger);border-radius:4px;padding:1px 5px;text-transform:uppercase}
+  .shareMgr{background:none;border:1px solid var(--line);color:var(--faint);border-radius:5px;
+    width:20px;height:20px;font-size:11px;cursor:pointer;line-height:1;flex-shrink:0}
+  .shareMgr:hover{border-color:var(--go-dim);color:var(--go)}
   .sep{display:flex;align-items:center;gap:10px;color:var(--faint);font-family:var(--disp);
     text-transform:uppercase;letter-spacing:.1em;font-size:11px;padding:14px 12px 6px}
   .sep::after{content:"";flex:1;height:1px;background:var(--line-soft)}
@@ -1032,6 +1035,44 @@ async function shareHeadToHeadImage(gwNum, g){
     toast('Image share failed: '+e.message);
   }
 }
+async function shareManagerCard(m){
+  try{
+    const available = state.teams
+      .filter(t=>!isBanned(m,t.name))
+      .map(t=>({name:t.name, left: state.maxPicksPerTeam - used(m,t.name), strength:t.strength}))
+      .sort((a,b)=>b.strength-a.strength);
+    const cardStatus = (label, usedFlag, result)=>{
+      if(!usedFlag) return `<span style="font-size:11px;font-weight:700;color:#19e2a0;border:1px solid #0e7d5c;background:rgba(25,226,160,.08);border-radius:5px;padding:2px 7px;">${label} available</span>`;
+      if(result===undefined || result===null) return `<span style="font-size:11px;font-weight:700;color:#8ea0c0;border:1px solid #283a5c;border-radius:5px;padding:2px 7px;">${label} used</span>`;
+      const ok = result==='D';
+      const color = ok ? '#19e2a0' : '#ff5b7e';
+      return `<span style="font-size:11px;font-weight:700;color:${color};border:1px solid ${color};border-radius:5px;padding:2px 7px;">${label} used ${ok?'✓':'✗'}</span>`;
+    };
+    const teamRows = available.map(t=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1c2a44;">
+        ${crestBadge(t.name, null)}
+        <span style="flex:1;font-size:14px;color:#eaf1fb;margin-left:10px;">${t.name}</span>
+        <span style="font-family:ui-monospace,monospace;font-size:12px;color:#8ea0c0;">${t.left} left</span>
+      </div>`).join('');
+    const html = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
+        <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
+      </div>
+      <div style="font-size:20px;font-weight:700;color:#eaf1fb;margin:6px 0 2px;">${m.name}</div>
+      <div style="font-size:13px;color:#8ea0c0;margin-bottom:12px;">${m.lives} lives · ${m.wins}·${m.draws}·${m.losses} · GW ${gw()}</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        ${cardStatus('WC', m.wildcardUsed, m.wildcardResult)}
+        ${cardStatus('DC', m.drawcardUsed, m.drawcardResult)}
+      </div>
+      <div style="font-size:12px;color:#5e7095;text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:4px;">Teams left (${available.length})</div>
+      <div>${teamRows || '<div style="color:#8ea0c0;font-size:13px;padding:8px 0;">No teams left to pick</div>'}</div>`;
+    await exportCardAsShare(html, `kamikaze-${m.name.replace(/\s+/g,'-')}-remaining.png`, `${m.name}'s remaining picks`);
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
+}
 async function shareStandingsImage(){
   function cardBadge(label, usedFlag, result){
     if(!usedFlag) return `<span style="font-size:9px;font-weight:600;color:#5e7095;border:1px solid #283a5c;border-radius:4px;padding:1px 4px;">${label}</span>`;
@@ -1182,6 +1223,7 @@ function renderStandings(){
     html += `<div class="row mgr ${m.eliminated?'out':''}">
       <span class="rank ${(!m.eliminated&&aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
       <span class="who"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}</span>
+        <button class="shareMgr" data-m="${m.name}" title="Share ${m.name}'s remaining teams &amp; cards">⇪</button>
         ${m.eliminated?'<span class="outtag">Out</span>':''}</span>
       <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span></span>
       <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
@@ -1204,6 +1246,12 @@ function renderStandings(){
     try{ await publishPublicStats(); note.textContent='Published — players can now see this on the stats page.'; }
     catch(e){ note.textContent='Publish failed: '+e.message; }
   };
+  view.querySelectorAll('.shareMgr').forEach(el=>{
+    el.onclick = ()=>{
+      const m = state.managers.find(x=>x.name===el.dataset.m);
+      shareManagerCard(m);
+    };
+  });
   view.querySelectorAll('.cardpip').forEach(el=>{
     el.onclick = ()=>{
       const m = state.managers.find(x=>x.name===el.dataset.m);
