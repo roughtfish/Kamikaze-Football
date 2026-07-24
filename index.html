@@ -1257,6 +1257,7 @@ function renderResolve(){
         <label class="ck"><input type="checkbox" class="edWild" ${p.wildcard?'checked':''} ${wcDisabled?'disabled':''}> WC</label>
         <label class="ck"><input type="checkbox" class="edDraw" ${p.drawcard?'checked':''} ${dcDisabled?'disabled':''}> DC</label>
         <button class="btn ghost edSave" style="padding:6px 12px">Save</button>
+        <button class="btn ghost edCancel" style="padding:6px 12px">Cancel</button>
       </div>`;
     }).join('');
     view.innerHTML = `<div class="panel"><div class="phead"><h2>Resolve · GW ${n}</h2></div>
@@ -1289,6 +1290,12 @@ function renderResolve(){
         if(newWildcard && newDrawcard){ toast('Wildcard and Drawcard can\u2019t both be played on the same pick'); return; }
         if(!confirm(`Update ${managerName}'s GW${n} pick to ${newTeam} (${newResult})${newWildcard?' + Wildcard':''}${newDrawcard?' + Drawcard':''}?`)) return;
         editManagerPick(n, managerName, newTeam, newResult, newWildcard, newDrawcard);
+      };
+    });
+    view.querySelectorAll('.editrow .edCancel').forEach(b=>{
+      b.onclick = ()=>{
+        // discard any unsaved clicks in this row — redraw straight from what's actually saved
+        setTab('resolve');
       };
     });
     return;
