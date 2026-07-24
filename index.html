@@ -571,17 +571,20 @@ function computeHeadToHeads(g){
   return (g.fixtures||[]).map(f=>({
     home: f.home, away: f.away,
     homePickers: pickersByTeam[f.home] || [],
-    awayPickers: pickersByTeam[f.away] || []
+    awayPickers: pickersByTeam[f.away] || [],
+    homeResult: (g.results && g.results[f.home]) || null,
+    awayResult: (g.results && g.results[f.away]) || null
   })).filter(h => h.homePickers.length && h.awayPickers.length);
 }
 function renderHeadToHeadPanel(g){
   const h2h = computeHeadToHeads(g);
   if(!h2h.length) return '';
+  const resBadge = r => r ? `<span class="histres ${r==='W'?'go':r==='L'?'danger':'warn'}">${r}</span>` : '';
   const rows = h2h.map(h=>`
     <div class="h2hrow">
-      <span class="h2hside"><b>${h.home}</b><span class="strength">${h.homePickers.join(', ')}</span></span>
+      <span class="h2hside"><b>${h.home}</b>${resBadge(h.homeResult)}<span class="strength">${h.homePickers.join(', ')}</span></span>
       <span class="h2hvs">vs</span>
-      <span class="h2hside right"><b>${h.away}</b><span class="strength">${h.awayPickers.join(', ')}</span></span>
+      <span class="h2hside right">${resBadge(h.awayResult)}<b>${h.away}</b><span class="strength">${h.awayPickers.join(', ')}</span></span>
     </div>`).join('');
   return `<div class="panel"><div class="phead"><h2>Head to head</h2>
       <span class="hint">Managers on opposite sides of the same match this week</span></div>
@@ -974,19 +977,24 @@ async function shareHeadToHeadImage(gwNum, g){
       if(!f) return null;
       return f.home===team ? f.homeCrest : f.awayCrest;
     };
+    const resTag = r => {
+      if(!r) return '';
+      const color = r==='W' ? '#19e2a0' : r==='L' ? '#ff5b7e' : '#ffc043';
+      return `<span style="font-family:Barlow,sans-serif;font-size:10px;font-weight:700;color:${color};border:1px solid ${color};border-radius:4px;padding:0 4px;margin-left:5px;">${r}</span>`;
+    };
     const rows = h2h.map(h=>{
       const homeC = crestFor(h.home), awayC = crestFor(h.away);
       return `<div style="padding:14px 0;border-bottom:1px solid #1c2a44;">
         <div style="display:flex;align-items:center;gap:10px;">
           ${crestBadge(h.home, homeC)}
           <div style="flex:1;">
-            <div style="font-size:14px;font-weight:600;color:#eaf1fb;">${h.home}</div>
-            <div style="font-size:12px;color:#8ea0c0;">${h.homePickers.join(', ')}</div>
+            <div style="font-size:15px;font-weight:700;color:#eaf1fb;">${h.home}${resTag(h.homeResult)}</div>
+            <div style="font-size:14px;font-weight:600;color:#eaf1fb;">${h.homePickers.join(', ')}</div>
           </div>
           <span style="font-family:Barlow,sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5e7095;padding:0 4px;">vs</span>
           <div style="flex:1;text-align:right;">
-            <div style="font-size:14px;font-weight:600;color:#eaf1fb;">${h.away}</div>
-            <div style="font-size:12px;color:#8ea0c0;">${h.awayPickers.join(', ')}</div>
+            <div style="font-size:15px;font-weight:700;color:#eaf1fb;">${resTag(h.awayResult)}${h.away}</div>
+            <div style="font-size:14px;font-weight:600;color:#eaf1fb;">${h.awayPickers.join(', ')}</div>
           </div>
           ${crestBadge(h.away, awayC)}
         </div>
@@ -1401,11 +1409,13 @@ function renderResolve(){
       <div class="toolbar"><button class="btn warn" id="undo">Undo this gameweek</button>
       <button class="btn ghost" id="sharePie">Share picks chart</button>
       <span class="note">"Undo" reverses everyone's GW${n} changes and reopens it. Use "Edit a pick or result" below to fix just one manager without touching the rest.</span></div></div>
+    ${renderHeadToHeadPanel(g)}
     <div class="panel"><div class="phead"><h2>Edit a pick or result</h2>
       <span class="hint">Change one manager's team, result, or cards — recalculates just that pick</span></div>
       <div style="padding:6px 16px 14px">${editRows}</div></div>`;
     document.getElementById('undo').onclick = ()=>undoGameweek(n);
     document.getElementById('sharePie').onclick = ()=>shareGwPicksPie(n, g);
+    view.querySelectorAll('.shareH2H').forEach(b=>{ b.onclick = ()=>shareHeadToHeadImage(n, g); });
     view.querySelectorAll('.editrow .edSeg button').forEach(b=>{
       b.onclick = ()=>{
         const seg = b.closest('.edSeg');
@@ -1457,8 +1467,6 @@ function renderResolve(){
       <button class="btn ghost" id="sharePieOpen">Share picks chart</button>
       <span class="note" id="resFetchNote">Fills in Win/Draw/Loss for finished matches automatically.</span>
     </div>`;
-
-  html += renderHeadToHeadPanel(g);
 
   if(teamsToRate.length===0){
     html += `<div class="empty"><div class="big">No picks to resolve yet</div>
@@ -1547,7 +1555,6 @@ function renderResolve(){
   document.getElementById('resCount').textContent = `${have}/${need} results set`;
   document.getElementById('applyGw').disabled = have<need;
   document.getElementById('sharePieOpen').onclick = ()=>shareGwPicksPie(n, g);
-  view.querySelectorAll('.shareH2H').forEach(b=>{ b.onclick = ()=>shareHeadToHeadImage(n, g); });
 }
 function readPicksLeniently(g){ g.picks = g.picks || {}; } // picks already saved via savePicks
 
