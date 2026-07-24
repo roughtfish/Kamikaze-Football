@@ -1195,6 +1195,7 @@ function renderPicks(){
       <span class="note" id="savedNote" style="color:var(--go)">${savedNoteText}</span>
       <span class="note" id="pickCount"></span>
       <span class="spacer"></span>
+      <button class="btn ghost" id="sharePieFromPicks">Share picks chart</button>
       <button class="btn ghost" id="goResolve">Go to resolve ›</button>
     </div></div>`;
   view.innerHTML = html;
@@ -1239,6 +1240,10 @@ function renderPicks(){
   });
   document.getElementById('savePicks').onclick = savePicks;
   document.getElementById('goResolve').onclick = ()=>setTab('resolve');
+  document.getElementById('sharePieFromPicks').onclick = ()=>{
+    readPicksFromForm();   // include anything typed but not yet saved
+    shareGwPicksPie(n, g);
+  };
   updatePickCount();
 }
 function readPicksFromForm(){
