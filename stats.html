@@ -85,6 +85,7 @@
   .empty{padding:48px 16px;text-align:center;color:var(--muted)}
   .empty .big{font-family:var(--disp);font-size:18px;color:var(--ink);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
   .legend{padding:12px 16px;font-size:12px;color:var(--faint);border-top:1px solid var(--line-soft)}
+  .champpanel{border-color:rgba(255,192,67,.4);background:linear-gradient(180deg, rgba(255,192,67,.06), var(--panel));}
   .footnote{text-align:center;color:var(--faint);font-size:12px;margin-top:18px}
   nav.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line-soft)}
   nav.tabs button{background:none;border:0;color:var(--muted);font-family:var(--disp);
@@ -256,7 +257,18 @@ function renderStats(snap){
     </div>`;
   }
 
+  const championHtml = snap.winner ? `
+    <div class="panel champpanel">
+      <div style="padding:22px 18px;text-align:center;">
+        <div style="font-size:32px;line-height:1;margin-bottom:6px;">🏆</div>
+        <div style="font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;font-size:11px;color:var(--warn);margin-bottom:5px;">Season champion</div>
+        <div style="font-family:var(--disp);font-weight:700;font-size:26px;color:var(--ink);">${snap.winner.name}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:5px;">${snap.season||''} · ${snap.winner.lives} lives remaining · ${snap.winner.wins}·${snap.winner.draws}·${snap.winner.losses}${snap.winner.pickedTeamValue?` · ${snap.winner.pickedTeamValue} squad value`:''}</div>
+      </div>
+    </div>` : '';
+
   view.innerHTML = `
+    ${championHtml}
     <div class="panel">
       <div class="phead"><h2>${snap.season||'Standings'}</h2>
         <span class="hint">Gameweek ${snap.gw||'—'} · ${snap.aliveCount||0}/${snap.totalCount||0} alive</span></div>
@@ -353,12 +365,27 @@ function renderHistoryPage(){
     }).join('');
     return `<tr><td class="num"><b>${g.gw}</b>${g.resolved?'':' <span class="note">open</span>'}</td>${cells}</tr>`;
   }).join('');
+  const pop = (snap.teamPopularity || []).filter(t=>t.count>0);
+  const maxCount = pop.length ? pop[0].count : 1;
+  const popRows = pop.map(t=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;">
+      <span style="width:110px;font-size:13px;color:var(--ink);flex-shrink:0;">${t.team}</span>
+      <div style="flex:1;background:var(--panel-2);border-radius:4px;overflow:hidden;height:14px;">
+        <div style="width:${t.count/maxCount*100}%;height:100%;background:var(--go);"></div>
+      </div>
+      <span style="font-family:var(--num);font-size:12.5px;color:var(--muted);width:24px;text-align:right;flex-shrink:0;">${t.count}</span>
+    </div>`).join('');
+  const popPanel = pop.length ? `<div class="panel"><div class="phead"><h2>Team popularity</h2>
+      <span class="hint">Picks across the season so far</span></div>
+    <div style="padding:10px 16px 14px">${popRows}</div></div>` : '';
+
   view.innerHTML = `<div class="panel"><div class="phead"><h2>Pick history</h2>
       <span class="hint">${history.length} gameweek${history.length===1?'':'s'} · scroll sideways for more managers</span></div>
     <div style="overflow-x:auto"><table class="histtable">
       <thead>${head}</thead><tbody>${rows}</tbody>
     </table></div>
-    <div class="legend">W/D/L shown once a gameweek's resolved · auto = no pick received, auto-assigned · WC/DC = card played that week.</div></div>`;
+    <div class="legend">W/D/L shown once a gameweek's resolved · auto = no pick received, auto-assigned · WC/DC = card played that week.</div></div>
+    ${popPanel}`;
 }
 document.getElementById('tabs').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
