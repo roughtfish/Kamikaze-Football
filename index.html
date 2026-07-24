@@ -416,10 +416,29 @@ let fbRef = null;
 const slug = label => String(label||'season').trim().replace(/[\/\s]+/g,'-').replace(/[^A-Za-z0-9_-]/g,'') || 'season';
 function uniqueId(base){ let id=slug(base), n=2; while(root&&root.seasons&&root.seasons[id]){ id=slug(base)+'-'+(n++); } return id; }
 
+function firebaseConsoleUrl(){
+  try{
+    const host = new URL(firebaseConfig.databaseURL).hostname;   // e.g. kamikaze-football-default-rtdb.europe-west1.firebasedatabase.app
+    const dbInstance = host.split('.')[0];                        // e.g. kamikaze-football-default-rtdb
+    const projectId = firebaseConfig.projectId;
+    if(!projectId || !dbInstance) return null;
+    return `https://console.firebase.google.com/project/${projectId}/database/${dbInstance}/data`;
+  }catch(e){ return null; }
+}
 function dataLive(on, text){
   const c = document.getElementById('dataChip');
   c.className = 'chip ' + (on ? 'live' : 'local');
   document.getElementById('dataChipText').textContent = text;
+  const url = firebaseConsoleUrl();
+  if(on && url){
+    c.style.cursor = 'pointer';
+    c.title = 'Open this database in the Firebase console';
+    c.onclick = ()=> window.open(url, '_blank');
+  } else {
+    c.style.cursor = 'default';
+    c.title = '';
+    c.onclick = null;
+  }
 }
 // coerce whatever's in storage into the {active, seasons} shape
 function migrate(data){
