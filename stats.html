@@ -281,6 +281,27 @@ function renderStats(snap){
     </div>`;
   }
 
+  const apr = snap.autoPickRecord;
+  let autoPickHtml = '';
+  if(apr && apr.auto && apr.auto.picks){
+    const pct = x => x===null||x===undefined ? '—' : Math.round(x*100)+'%';
+    autoPickHtml = `<div class="panel">
+      <div class="phead"><h2>Q's record</h2>
+        <span class="hint">How Q's picks have actually performed</span></div>
+      <div style="padding:10px 16px 6px">
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-soft);">
+          <span style="font-size:14px;">Q</span>
+          <span style="font-family:var(--num);font-size:13px;color:var(--muted);">${apr.auto.picks} picks · <b style="color:var(--ink)">${apr.auto.wins}</b>·${apr.auto.draws}·${apr.auto.losses} · ${pct(apr.autoRate)} win rate</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:8px 0;">
+          <span style="font-size:14px;">Everyone else</span>
+          <span style="font-family:var(--num);font-size:13px;color:var(--muted);">${apr.manual.picks} picks · <b style="color:var(--ink)">${apr.manual.wins}</b>·${apr.manual.draws}·${apr.manual.losses} · ${pct(apr.manualRate)} win rate</span>
+        </div>
+      </div>
+      <div class="legend">${(apr.beaten&&apr.beaten.length) ? `Q's win rate currently beats ${apr.beaten.length} manager${apr.beaten.length===1?'':'s'} on their own overall win rate: ${apr.beaten.join(', ')}.` : "Q isn't beating anyone on win rate yet."}</div>
+    </div>`;
+  }
+
   const championHtml = snap.winner ? `
     <div class="panel champpanel">
       <div style="padding:22px 18px;text-align:center;">
@@ -301,6 +322,7 @@ function renderStats(snap){
     </div>
     ${ptvHtml}
     ${h2hHtml}
+    ${autoPickHtml}
     <p class="footnote">Last updated ${published}</p>
     <p class="footnote" style="margin-top:6px">
       <a href="${window.location.href}" style="color:var(--muted);font-size:12px;" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>alert('Link copied!'))">📋 Copy link to share with players</a>
