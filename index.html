@@ -242,6 +242,11 @@
   .fxbox>summary .note{text-transform:none;letter-spacing:0}
   .fxpair{display:grid;grid-template-columns:1fr auto 1fr auto;gap:8px;align-items:center}
   .fxpair .v{color:var(--faint);font-family:var(--disp);text-align:center}
+  .h2hrow{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line-soft)}
+  .h2hside{flex:1;display:flex;flex-direction:column;gap:2px}
+  .h2hside.right{align-items:flex-end;text-align:right}
+  .h2hside b{font-size:15px}
+  .h2hvs{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;font-size:11px;color:var(--faint);flex-shrink:0}
   @media (max-width:680px){
     .row{grid-template-columns:24px 1fr 64px;gap:8px}
     .row .lives .pips{display:none}
@@ -553,6 +558,34 @@ function gwObj(n, create){
   state.gameweeks = state.gameweeks || {};
   if(!state.gameweeks[n] && create) state.gameweeks[n] = {status:'open', fixtures:[], results:{}, picks:{}};
   return state.gameweeks[n];
+}
+// managers whose picked teams are playing each other this gameweek — a real
+// head-to-head, not just "picked the same team". Only returns fixtures where
+// at least one manager is on each side.
+function computeHeadToHeads(g){
+  const pickersByTeam = {};
+  Object.entries(g.picks||{}).forEach(([name,p])=>{
+    if(!p || !p.team) return;
+    (pickersByTeam[p.team] = pickersByTeam[p.team] || []).push(name);
+  });
+  return (g.fixtures||[]).map(f=>({
+    home: f.home, away: f.away,
+    homePickers: pickersByTeam[f.home] || [],
+    awayPickers: pickersByTeam[f.away] || []
+  })).filter(h => h.homePickers.length && h.awayPickers.length);
+}
+function renderHeadToHeadPanel(g){
+  const h2h = computeHeadToHeads(g);
+  if(!h2h.length) return '';
+  const rows = h2h.map(h=>`
+    <div class="h2hrow">
+      <span class="h2hside"><b>${h.home}</b><span class="strength">${h.homePickers.join(', ')}</span></span>
+      <span class="h2hvs">vs</span>
+      <span class="h2hside right"><b>${h.away}</b><span class="strength">${h.awayPickers.join(', ')}</span></span>
+    </div>`).join('');
+  return `<div class="panel"><div class="phead"><h2>Head to head</h2>
+      <span class="hint">Managers on opposite sides of the same match this week</span></div>
+    <div style="padding:6px 16px 14px">${rows}</div></div>`;
 }
 function sortedStandings(){
   return [...state.managers].sort((a,b)=>{
@@ -1162,6 +1195,8 @@ function renderPicks(){
       <p class="note">Order matters: a no-show gets the first away team they haven't already used twice.</p>
     </div></details>`;
 
+  html += renderHeadToHeadPanel(g);
+
   html += `<div class="panel"><div class="phead"><h2>Enter picks · GW ${n}</h2>
     <span class="hint">${alive.length} managers in · blanks auto-fill at resolve</span></div>`;
   alive.forEach(m=>{
@@ -1377,6 +1412,8 @@ function renderResolve(){
       <button class="btn ghost" id="sharePieOpen">Share picks chart</button>
       <span class="note" id="resFetchNote">Fills in Win/Draw/Loss for finished matches automatically.</span>
     </div>`;
+
+  html += renderHeadToHeadPanel(g);
 
   if(teamsToRate.length===0){
     html += `<div class="empty"><div class="big">No picks to resolve yet</div>
