@@ -842,9 +842,9 @@ function drawPieDataUrl(entries, total, size=200){
     cum += (e.count/total)*Math.PI*2;
     return {a0, a1:cum, color: teamColor(e.team,i)};
   });
-  // convert to a "0 = right, clockwise, wraps [0,2π)" frame so it's easy to tell
-  // which part of a slice faces the front (the visible bottom half of the tilt)
-  const toFront = a => (((a + Math.PI/2) % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
+  // the wall only needs to show on the bottom half of the ellipse (y > cy) —
+  // that's the only side actually facing the viewer in a top-down tilt
+  const normalize = a => { let s = a % (2*Math.PI); if(s<0) s += 2*Math.PI; return s; };
 
   // 1) side wall — only the arc that falls in the front-facing bottom half
   slices.forEach(s=>{
@@ -853,8 +853,8 @@ function drawPieDataUrl(entries, total, size=200){
     for(let k=0;k<steps;k++){
       const t0 = s.a0 + (s.a1-s.a0)*k/steps;
       const t1 = s.a0 + (s.a1-s.a0)*(k+1)/steps;
-      const front = toFront((t0+t1)/2);
-      if(front <= 0 || front >= Math.PI) continue;   // back half is hidden from view
+      const mid = normalize((t0+t1)/2);
+      if(mid <= 0 || mid >= Math.PI) continue;   // top half is hidden from view
       const x0 = cx + rx*Math.cos(t0), y0 = cy + ry*Math.sin(t0);
       const x1 = cx + rx*Math.cos(t1), y1 = cy + ry*Math.sin(t1);
       ctx.beginPath();
