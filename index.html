@@ -606,6 +606,77 @@ function computeHeadToHeads(g){
     awayResult: (g.results && g.results[f.away]) || null
   })).filter(h => h.homePickers.length && h.awayPickers.length);
 }
+// tallies every resolved head-to-head across the whole season into a per-manager
+// W/D/L record — each side's own known result decides their own outcome, so this
+// is exact even when a manager's pick was on the away side of the fixture
+function computeHeadToHeadLeaderboard(){
+  const tally = {};
+  Object.values(state.gameweeks||{}).forEach(g=>{
+    if(g.status!=='resolved') return;
+    computeHeadToHeads(g).forEach(h=>{
+      h.homePickers.forEach(name=>{
+        tally[name] = tally[name] || {wins:0,draws:0,losses:0,played:0};
+        tally[name].played++;
+        if(h.homeResult==='W') tally[name].wins++;
+        else if(h.homeResult==='D') tally[name].draws++;
+        else if(h.homeResult==='L') tally[name].losses++;
+      });
+      h.awayPickers.forEach(name=>{
+        tally[name] = tally[name] || {wins:0,draws:0,losses:0,played:0};
+        tally[name].played++;
+        if(h.awayResult==='W') tally[name].wins++;
+        else if(h.awayResult==='D') tally[name].draws++;
+        else if(h.awayResult==='L') tally[name].losses++;
+      });
+    });
+  });
+  return Object.entries(tally).map(([name,t])=>({name, ...t}))
+    .filter(t=>t.played>0)
+    .sort((a,b)=> b.wins-a.wins || b.played-a.played);
+}
+function renderHeadToHeadLeaderboardPanel(){
+  const board = computeHeadToHeadLeaderboard();
+  if(!board.length) return '';
+  const rows = board.map((t,i)=>`
+    <div class="row mgr" style="grid-template-columns:28px 1fr 90px">
+      <span class="rank ${i===0?'lead':''}">${i+1}</span>
+      <span class="who"><span class="nm">${t.name}</span></span>
+      <span class="wdl"><b>${t.wins}</b>·${t.draws}·${t.losses}</span>
+    </div>`).join('');
+  return `<div class="panel"><div class="phead"><h2>Head to head leaderboard</h2>
+      <span class="hint">Record when a manager's pick faced another manager's pick</span></div>
+    <div class="board">
+      <div class="row head" style="grid-template-columns:28px 1fr 90px"><span>#</span><span>Manager</span><span class="h-wdl">W·D·L</span></div>
+      ${rows}
+    </div>
+    <div class="toolbar"><button class="btn ghost shareH2HBoard">Share head to head leaderboard</button></div></div>`;
+}
+async function shareHeadToHeadLeaderboardImage(){
+  try{
+    const board = computeHeadToHeadLeaderboard();
+    if(!board.length){ toast('No head-to-head results recorded yet'); return; }
+    const rows = board.map((t,i)=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1c2a44;">
+        <span style="width:22px;font-family:Barlow,sans-serif;font-weight:700;font-size:15px;color:#8ea0c0;text-align:center;flex-shrink:0;">${i+1}</span>
+        <span style="flex:1;font-size:14px;color:#eaf1fb;">${t.name}</span>
+        <span style="font-family:ui-monospace,monospace;font-size:13px;color:#8ea0c0;">${t.wins}·${t.draws}·${t.losses}</span>
+      </div>`).join('');
+    const html = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
+        <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
+      </div>
+      <div style="font-size:13px;color:#8ea0c0;margin-bottom:6px;">Head to head leaderboard</div>
+      <div style="display:flex;gap:10px;padding:4px 0 8px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#5e7095;">
+        <span style="width:22px;text-align:center;">#</span><span style="flex:1;">Manager</span><span>W·D·L</span>
+      </div>
+      <div>${rows}</div>`;
+    await exportCardAsShare(html, `kamikaze-${(state.season||'season').replace(/\//g,'-')}-h2h-leaderboard.png`, `${state.season||''} head to head leaderboard`);
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
+}
 function renderHeadToHeadPanel(g){
   const h2h = computeHeadToHeads(g);
   if(!h2h.length) return '';
@@ -697,6 +768,7 @@ async function publishPublicStats(){
     managers: rows,
     history,
     teamPopularity: computeTeamPopularity(),
+    headToHeadLeaderboard: computeHeadToHeadLeaderboard(),
     winner: winner ? {
       name: winner.name, lives: winner.lives,
       wins: winner.wins, draws: winner.draws, losses: winner.losses,
@@ -2044,7 +2116,9 @@ function renderHistory(){
       <thead>${head}</thead><tbody>${rows}</tbody>
     </table></div>
     <div class="toolbar"><span class="note">W/D/L shown once a gameweek's resolved · auto = no pick received, auto-assigned · WC/DC = card played that week.</span></div></div>
+    ${renderHeadToHeadLeaderboardPanel()}
     ${renderTeamPopularityPanel()}`;
+  view.querySelectorAll('.shareH2HBoard').forEach(b=>{ b.onclick = ()=>shareHeadToHeadLeaderboardImage(); });
   view.querySelectorAll('.shareTeamPop').forEach(b=>{ b.onclick = ()=>shareTeamPopularityImage(); });
 }
 
