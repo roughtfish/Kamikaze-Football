@@ -184,6 +184,7 @@
     border-radius:10px;color:#ffc2cf;font-size:13.5px}
   .okbox{margin:0;padding:11px 16px;background:rgba(25,226,160,.08);border:1px solid rgba(25,226,160,.3);
     border-radius:10px;color:#bdf6e3;font-size:13.5px}
+  .champpanel{border-color:rgba(255,192,67,.4);background:linear-gradient(180deg, rgba(255,192,67,.06), var(--panel));}
   .fixrow{display:grid;grid-template-columns:1fr auto 1fr auto;gap:10px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line-soft)}
   .fixrow .v{color:var(--faint);font-family:var(--disp);text-align:center}
   .strength{font-family:var(--num);font-size:11px;color:var(--faint)}
@@ -541,6 +542,13 @@ function normaliseUsed(){ state.managers.forEach(m=>{ m.used = m.used||{}; m.pic
 /* ---------- 3. RULES HELPERS -------------------------------------------- */
 const teamByName = n => state.teams.find(t=>t.name===n);
 const aliveManagers = () => state.managers.filter(m=>!m.eliminated);
+// returns the winning manager once only one is left standing, or null otherwise —
+// guards against a trivial "win" in a season with only one manager total
+function getWinner(){
+  if(state.managers.length <= 1) return null;
+  const alive = aliveManagers();
+  return alive.length === 1 ? alive[0] : null;
+}
 function used(m,t){ return (m.used && m.used[t]) || 0; }
 function isBanned(m,t){ return used(m,t) >= state.maxPicksPerTeam; }
 function availableTeams(m){ return state.teams.filter(t=>!isBanned(m,t.name)); }
@@ -676,6 +684,7 @@ async function publishPublicStats(){
       });
       return {gw:n, resolved, picks};
     });
+  const winner = getWinner();
   const snapshot = {
     season: state.season || '',
     gw: gw(),
@@ -686,6 +695,12 @@ async function publishPublicStats(){
     managerOrder,
     managers: rows,
     history,
+    teamPopularity: computeTeamPopularity(),
+    winner: winner ? {
+      name: winner.name, lives: winner.lives,
+      wins: winner.wins, draws: winner.draws, losses: winner.losses,
+      pickedTeamValue: pickedTeamValue(winner.name).total
+    } : null,
     publishedAt: new Date().toISOString()
   };
   await firebase.database().ref(`${PUBLIC_PATH}/current`).set(snapshot);
@@ -1137,6 +1152,27 @@ async function shareManagerCard(m){
     toast('Image share failed: '+e.message);
   }
 }
+async function shareWinnerImage(winner){
+  try{
+    const ptv = pickedTeamValue(winner.name);
+    const html = `
+      <div style="text-align:center;padding:10px 0 4px;">
+        <div style="font-size:13px;color:#8ea0c0;letter-spacing:.04em;margin-bottom:2px;">Kamikaze Football · ${state.season||''}</div>
+        <div style="font-size:44px;line-height:1;margin:14px 0 8px;">🏆</div>
+        <div style="font-family:Barlow,sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:12px;color:#ffc043;font-weight:700;margin-bottom:6px;">Season Champion</div>
+        <div style="font-family:Barlow,sans-serif;font-weight:800;font-size:32px;color:#eaf1fb;margin-bottom:10px;">${winner.name}</div>
+        <div style="display:inline-flex;gap:16px;padding:10px 18px;background:#16223a;border-radius:10px;border:1px solid #283a5c;">
+          <div><div style="font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:#19e2a0;">${winner.lives}</div><div style="font-size:10px;color:#8ea0c0;text-transform:uppercase;letter-spacing:.05em;">lives left</div></div>
+          <div><div style="font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:#eaf1fb;">${winner.wins}·${winner.draws}·${winner.losses}</div><div style="font-size:10px;color:#8ea0c0;text-transform:uppercase;letter-spacing:.05em;">W·D·L</div></div>
+          ${ptv.count?`<div><div style="font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:#eaf1fb;">${ptv.total}</div><div style="font-size:10px;color:#8ea0c0;text-transform:uppercase;letter-spacing:.05em;">squad value</div></div>`:''}
+        </div>
+      </div>`;
+    await exportCardAsShare(html, `kamikaze-${(state.season||'season').replace(/\//g,'-')}-champion.png`, `${winner.name} — ${state.season||''} champion`);
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
+}
 async function shareStandingsImage(){
   function cardBadge(label, usedFlag, result){
     if(!usedFlag) return `<span style="font-size:9px;font-weight:600;color:#5e7095;border:1px solid #283a5c;border-radius:4px;padding:1px 4px;">${label}</span>`;
@@ -1264,6 +1300,22 @@ function pip(i, lives){
 function renderStandings(){
   const rows = sortedStandings();
   let aliveRank = 0, html = '';
+  const winner = getWinner();
+  if(winner){
+    const ptv = pickedTeamValue(winner.name);
+    html += `<div class="panel champpanel">
+      <div style="padding:24px 20px;text-align:center;">
+        <div style="font-size:34px;line-height:1;margin-bottom:6px;">🏆</div>
+        <div style="font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;font-size:12px;color:var(--warn);margin-bottom:6px;">Season champion</div>
+        <div style="font-family:var(--disp);font-weight:700;font-size:28px;color:var(--ink);">${winner.name}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:6px;">${state.season||''} · ${winner.lives} lives remaining · ${winner.wins}·${winner.draws}·${winner.losses}${ptv.count?` · ${ptv.total} squad value`:''}</div>
+        <div class="toolbar" style="justify-content:center;border-top:0;margin-top:14px;">
+          <button class="btn" id="shareWinner">Share champion image</button>
+          <span class="note" id="winnerShareNote"></span>
+        </div>
+      </div>
+    </div>`;
+  }
   html += `<div class="panel"><div class="phead">
       <h2>Standings</h2>
       <span class="hint">Tap a W / D chip to flip a manager's card status</span>
@@ -1300,6 +1352,14 @@ function renderStandings(){
       <a href="stats.html" target="_blank" class="btn ghost" style="text-decoration:none">↗ Open stats page</a>
       <span class="note" id="standingsShareNote"></span></div></div>`;
   view.innerHTML = html;
+  const shareWinnerBtn = document.getElementById('shareWinner');
+  if(shareWinnerBtn){
+    shareWinnerBtn.onclick = async ()=>{
+      const note=document.getElementById('winnerShareNote'); note.textContent='Building image…';
+      try{ await shareWinnerImage(winner); note.textContent=''; }
+      catch(e){ note.textContent='Failed: '+e.message; }
+    };
+  }
   document.getElementById('shareStandings').onclick = async ()=>{
     const note=document.getElementById('standingsShareNote'); note.textContent='Building image…';
     try{ await shareStandingsImage(); note.textContent=''; }
@@ -1884,6 +1944,67 @@ function renderLimits(){
 }
 
 /* --- Pick history --- */
+// how many times each team has been picked across the whole season so far,
+// including teams with zero picks — so "only picked twice all year" is visible too
+function computeTeamPopularity(){
+  const counts = {};
+  Object.values(state.gameweeks||{}).forEach(g=>{
+    Object.values(g.picks||{}).forEach(p=>{
+      if(!p || !p.team) return;
+      counts[p.team] = (counts[p.team]||0) + 1;
+    });
+  });
+  return state.teams.map(t=>({team:t.name, count:counts[t.name]||0})).sort((a,b)=>b.count-a.count);
+}
+function renderTeamPopularityPanel(){
+  const pop = computeTeamPopularity();
+  const totalPicks = pop.reduce((s,t)=>s+t.count,0);
+  if(!totalPicks) return '';
+  const maxCount = pop[0].count || 1;
+  const rows = pop.map(t=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;">
+      <span style="width:110px;font-size:13px;color:var(--ink);flex-shrink:0;">${t.team}</span>
+      <div style="flex:1;background:var(--panel-2);border-radius:4px;overflow:hidden;height:14px;">
+        <div style="width:${t.count/maxCount*100}%;height:100%;background:var(--go);"></div>
+      </div>
+      <span style="font-family:var(--num);font-size:12.5px;color:var(--muted);width:24px;text-align:right;flex-shrink:0;">${t.count}</span>
+    </div>`).join('');
+  return `<div class="panel"><div class="phead"><h2>Team popularity</h2>
+      <span class="hint">Picks across the whole season so far · ${totalPicks} total</span></div>
+    <div style="padding:10px 16px 6px">${rows}</div>
+    <div class="toolbar"><button class="btn ghost shareTeamPop">Share team popularity</button></div></div>`;
+}
+async function shareTeamPopularityImage(){
+  try{
+    const pop = computeTeamPopularity();
+    const totalPicks = pop.reduce((s,t)=>s+t.count,0);
+    if(!totalPicks){ toast('No picks recorded yet'); return; }
+    const maxCount = pop[0].count || 1;
+    const rows = pop.map((t,i)=>{
+      const crest = (state.teamCrests && state.teamCrests[t.team]) || null;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;">
+        <span style="width:20px;font-family:Barlow,sans-serif;font-weight:700;font-size:13px;color:#5e7095;text-align:center;flex-shrink:0;">${i+1}</span>
+        ${crestBadge(t.team, crest)}
+        <span style="width:110px;font-size:13px;color:#eaf1fb;flex-shrink:0;">${t.team}</span>
+        <div style="flex:1;background:#16223a;border-radius:4px;overflow:hidden;height:12px;">
+          <div style="width:${t.count/maxCount*100}%;height:100%;background:${teamColor(t.team,i)};"></div>
+        </div>
+        <span style="font-family:ui-monospace,monospace;font-size:12px;color:#8ea0c0;width:20px;text-align:right;flex-shrink:0;">${t.count}</span>
+      </div>`;
+    }).join('');
+    const html = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
+        <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
+      </div>
+      <div style="font-size:13px;color:#8ea0c0;margin-bottom:14px;">Team popularity · ${totalPicks} picks so far</div>
+      <div>${rows}</div>`;
+    await exportCardAsShare(html, `kamikaze-${(state.season||'season').replace(/\//g,'-')}-team-popularity.png`, `${state.season||''} team popularity`);
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
+}
 function renderHistory(){
   const gws = Object.keys(state.gameweeks||{}).map(Number).sort((a,b)=>a-b)
     .filter(n => state.gameweeks[n].picks && Object.keys(state.gameweeks[n].picks).length);
@@ -1921,7 +2042,9 @@ function renderHistory(){
     <div style="overflow-x:auto"><table class="grid histtable">
       <thead>${head}</thead><tbody>${rows}</tbody>
     </table></div>
-    <div class="toolbar"><span class="note">W/D/L shown once a gameweek's resolved · auto = no pick received, auto-assigned · WC/DC = card played that week.</span></div></div>`;
+    <div class="toolbar"><span class="note">W/D/L shown once a gameweek's resolved · auto = no pick received, auto-assigned · WC/DC = card played that week.</span></div></div>
+    ${renderTeamPopularityPanel()}`;
+  view.querySelectorAll('.shareTeamPop').forEach(b=>{ b.onclick = ()=>shareTeamPopularityImage(); });
 }
 
 /* --- Rules --- */
