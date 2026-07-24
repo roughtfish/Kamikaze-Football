@@ -171,6 +171,10 @@
   .empty{padding:34px 16px;text-align:center;color:var(--muted)}
   .empty .big{font-family:var(--disp);font-size:18px;color:var(--ink);text-transform:uppercase;letter-spacing:.04em}
   .pickrow{display:grid;grid-template-columns:1fr 1.6fr auto;gap:10px;align-items:center;padding:9px 16px;border-bottom:1px solid var(--line-soft)}
+  .editrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line-soft)}
+  .editrow .nm{min-width:120px;font-weight:600}
+  .editrow select{width:auto;min-width:140px}
+  .editrow .edSeg button{padding:6px 10px;font-size:12px}
   .pickrow .nm{font-weight:600}
   .pickrow .opts{display:flex;gap:12px;align-items:center}
   .warnbox{margin:0;padding:11px 16px;background:rgba(255,91,126,.08);border:1px solid rgba(255,91,126,.3);
@@ -1231,13 +1235,62 @@ function savePicks(){
 function renderResolve(){
   const n = gw(); const g = gwObj(n, true);
   if(g.status==='resolved'){
+    const editRows = state.managers.map(m=>{
+      const p = (g.picks && g.picks[m.name]) || {};
+      const currentTeam = p.team || '';
+      const currentResult = currentTeam ? (g.results && g.results[currentTeam]) : null;
+      const teamOpts = [...state.teams].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>
+        `<option value="${t.name}" ${t.name===currentTeam?'selected':''}>${t.name}</option>`).join('');
+      // wildcard/drawcard checkboxes: allow keeping what's already flagged on THIS pick even
+      // if the card shows used elsewhere — since editing might mean toggling this exact usage off
+      const wcDisabled = m.wildcardUsed && !p.wildcard;
+      const dcDisabled = m.drawcardUsed && !p.drawcard;
+      const flags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' · ');
+      return `<div class="editrow" data-m="${m.name}">
+        <span class="nm">${m.name}${flags?` <span class="strength">(${flags})</span>`:''}</span>
+        <select class="edTeam">${teamOpts}</select>
+        <span class="seg edSeg">
+          <button class="edR ${currentResult==='W'?'on H':''}" data-r="W">Win</button>
+          <button class="edR ${currentResult==='D'?'on D':''}" data-r="D">Draw</button>
+          <button class="edR ${currentResult==='L'?'on A':''}" data-r="L">Loss</button>
+        </span>
+        <label class="ck"><input type="checkbox" class="edWild" ${p.wildcard?'checked':''} ${wcDisabled?'disabled':''}> WC</label>
+        <label class="ck"><input type="checkbox" class="edDraw" ${p.drawcard?'checked':''} ${dcDisabled?'disabled':''}> DC</label>
+        <button class="btn ghost edSave" style="padding:6px 12px">Save</button>
+      </div>`;
+    }).join('');
     view.innerHTML = `<div class="panel"><div class="phead"><h2>Resolve · GW ${n}</h2></div>
       <div class="okbox" style="margin:16px">Gameweek ${n} has been resolved and applied to the table.</div>
       <div class="toolbar"><button class="btn warn" id="undo">Undo this gameweek</button>
       <button class="btn ghost" id="sharePie">Share picks chart</button>
-      <span class="note">Reverses the life/record changes from GW ${n}.</span></div></div>`;
+      <span class="note">"Undo" reverses everyone's GW${n} changes and reopens it. Use "Edit a pick" below to fix just one manager without touching the rest.</span></div></div>
+    <div class="panel"><div class="phead"><h2>Edit a pick</h2>
+      <span class="hint">Change one manager's team, result, or cards — recalculates just that pick</span></div>
+      <div style="padding:6px 16px 14px">${editRows}</div></div>`;
     document.getElementById('undo').onclick = ()=>undoGameweek(n);
     document.getElementById('sharePie').onclick = ()=>shareGwPicksPie(n, g);
+    view.querySelectorAll('.editrow .edSeg button').forEach(b=>{
+      b.onclick = ()=>{
+        const seg = b.closest('.edSeg');
+        seg.querySelectorAll('button').forEach(x=>x.classList.remove('on','H','D','A'));
+        b.classList.add('on', b.dataset.r==='W'?'H':b.dataset.r==='D'?'D':'A');
+      };
+    });
+    view.querySelectorAll('.editrow .edSave').forEach(b=>{
+      b.onclick = ()=>{
+        const row = b.closest('.editrow');
+        const managerName = row.dataset.m;
+        const newTeam = row.querySelector('.edTeam').value;
+        const activeR = row.querySelector('.edSeg button.on');
+        const newResult = activeR ? activeR.dataset.r : null;
+        const newWildcard = row.querySelector('.edWild').checked;
+        const newDrawcard = row.querySelector('.edDraw').checked;
+        if(!newResult){ toast('Pick Win, Draw or Loss for this manager\u2019s team first'); return; }
+        if(newWildcard && newDrawcard){ toast('Wildcard and Drawcard can\u2019t both be played on the same pick'); return; }
+        if(!confirm(`Update ${managerName}'s GW${n} pick to ${newTeam} (${newResult})${newWildcard?' + Wildcard':''}${newDrawcard?' + Drawcard':''}?`)) return;
+        editManagerPick(n, managerName, newTeam, newResult, newWildcard, newDrawcard);
+      };
+    });
     return;
   }
   // safety net: if you've jumped here without visiting Picks, make sure fixtures exist first
@@ -1394,6 +1447,36 @@ function renderPreview(g){
     <table class="grid"><thead><tr><th>Manager</th><th>Team</th><th class="num">Res</th><th class="num">Δ</th><th class="num">Lives</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
+// applies one manager's pick+result to their lives/record/bans/cards, and
+// records exactly what was applied so it can be precisely reversed later —
+// this is what makes editing a single pick after the fact possible
+function applyForManager(g, m, pick, result){
+  const e = effect(pick, result);
+  m.lives += e.delta;
+  if(e.outcome==='W') m.wins++; else if(e.outcome==='D') m.draws++; else m.losses++;
+  m.used[pick.team] = used(m, pick.team) + 1;
+  if(pick.wildcard){ m.wildcardUsed = true; m.wildcardResult = result; }
+  if(pick.drawcard){ m.drawcardUsed = true; m.drawcardResult = result; }
+  m.eliminated = m.lives <= 0;
+  g.applied = g.applied || {};
+  g.applied[m.name] = {team:pick.team, result, delta:e.delta, outcome:e.outcome,
+    wildcard:!!pick.wildcard, drawcard:!!pick.drawcard};
+}
+// exactly reverses whatever applyForManager last recorded for this manager
+// in this gameweek — leaves everyone else, and every other gameweek, untouched
+function reverseAppliedForManager(g, m){
+  const applied = g.applied && g.applied[m.name];
+  if(!applied) return;
+  m.lives -= applied.delta;
+  if(applied.outcome==='W') m.wins = Math.max(0, m.wins-1);
+  else if(applied.outcome==='D') m.draws = Math.max(0, m.draws-1);
+  else if(applied.outcome==='L') m.losses = Math.max(0, m.losses-1);
+  if(applied.team) m.used[applied.team] = Math.max(0, used(m, applied.team) - 1);
+  if(applied.wildcard){ m.wildcardUsed = false; m.wildcardResult = null; }
+  if(applied.drawcard){ m.drawcardUsed = false; m.drawcardResult = null; }
+  m.eliminated = m.lives <= 0;
+  delete g.applied[m.name];
+}
 function applyGameweek(n){
   const g = gwObj(n, true);
   materializeAutos(g);                       // no-shows get their auto away team
@@ -1403,22 +1486,12 @@ function applyGameweek(n){
     g.tableSnapshot = state.teams.map(t=>({name:t.name, strength:t.strength}));
   }
   const picks = Object.entries(g.picks||{}).filter(([,p])=>p.team);
-  // snapshot for undo
-  g._undo = state.managers.map(m=>({name:m.name, lives:m.lives, wins:m.wins, draws:m.draws,
-            losses:m.losses, eliminated:m.eliminated, wildcardUsed:m.wildcardUsed,
-            drawcardUsed:m.drawcardUsed, wildcardResult:m.wildcardResult, drawcardResult:m.drawcardResult,
-            used:structuredClone(m.used)}));
+  g.applied = g.applied || {};
   picks.forEach(([name,p])=>{
     const m = state.managers.find(x=>x.name===name);
     const res = g.results[p.team]; if(!res) return;
-    const e = effect(p, res);
-    m.lives += e.delta;
-    if(e.outcome==='W') m.wins++; else if(e.outcome==='D') m.draws++; else m.losses++;
-    m.used[p.team] = used(m,p.team) + 1;
-    // both cards key off "was it a draw" — record the actual result so success/fail is known later
-    if(p.wildcard){ m.wildcardUsed = true; m.wildcardResult = res; }
-    if(p.drawcard){ m.drawcardUsed = true; m.drawcardResult = res; }
-    if(m.lives <= 0) m.eliminated = true;
+    if(g.applied[name]) return;   // already applied — avoid double-counting on a re-run
+    applyForManager(g, m, p, res);
   });
   g.status = 'resolved';
   state.currentGw = n + 1;
@@ -1434,17 +1507,46 @@ function autoPublishStats(){
   publishPublicStats().catch(e=>console.warn('auto-publish failed:', e));
 }
 function undoGameweek(n){
-  const g = gwObj(n); if(!g || !g._undo){ toast('Nothing to undo'); return; }
-  g._undo.forEach(s=>{
-    const m = state.managers.find(x=>x.name===s.name);
-    Object.assign(m, {lives:s.lives, wins:s.wins, draws:s.draws, losses:s.losses,
-      eliminated:s.eliminated, wildcardUsed:s.wildcardUsed, drawcardUsed:s.drawcardUsed,
-      wildcardResult:s.wildcardResult, drawcardResult:s.drawcardResult,
-      used:structuredClone(s.used)});
+  const g = gwObj(n);
+  if(!g || !g.applied || !Object.keys(g.applied).length){ toast('Nothing to undo'); return; }
+  Object.keys(g.applied).forEach(name=>{
+    const m = state.managers.find(x=>x.name===name);
+    if(m) reverseAppliedForManager(g, m);
   });
-  delete g._undo; g.status = 'open'; state.currentGw = n;
-  viewGw = state.currentGw;
+  g.status = 'open'; state.currentGw = n; viewGw = state.currentGw;
   save(); toast(`Gameweek ${n} reopened`); setTab('resolve');
+  autoPublishStats();
+}
+// correct ONE manager's pick/result/cards for an already-resolved gameweek,
+// without reopening the week or touching anyone else. If the team's result
+// itself is being changed, every other manager who picked that same team is
+// recomputed too, so the shared result stays consistent for everyone on it.
+function editManagerPick(n, managerName, newTeam, newResult, newWildcard, newDrawcard){
+  const g = gwObj(n, true);
+  const m = state.managers.find(x=>x.name===managerName);
+  if(!m){ toast('Manager not found'); return; }
+  if(!newTeam){ toast('Pick a team first'); return; }
+  if(!newResult){ toast('Set a result for that team first'); return; }
+  reverseAppliedForManager(g, m);
+  const oldTeamResult = g.results[newTeam];
+  g.results = g.results || {};
+  g.results[newTeam] = newResult;
+  if(oldTeamResult && oldTeamResult !== newResult){
+    // the shared result for this team changed — recompute everyone else on it too
+    Object.entries(g.picks||{}).forEach(([otherName, otherP])=>{
+      if(otherName === managerName || !otherP || otherP.team !== newTeam) return;
+      const otherM = state.managers.find(x=>x.name===otherName);
+      if(!otherM) return;
+      reverseAppliedForManager(g, otherM);
+      applyForManager(g, otherM, otherP, newResult);
+    });
+  }
+  g.picks = g.picks || {};
+  g.picks[managerName] = {team:newTeam, wildcard:!!newWildcard, drawcard:!!newDrawcard, auto:false};
+  applyForManager(g, m, g.picks[managerName], newResult);
+  save();
+  toast(`${managerName}'s GW${n} pick updated`);
+  setTab('resolve');
   autoPublishStats();
 }
 
