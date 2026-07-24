@@ -1264,8 +1264,8 @@ function renderResolve(){
       <div class="okbox" style="margin:16px">Gameweek ${n} has been resolved and applied to the table.</div>
       <div class="toolbar"><button class="btn warn" id="undo">Undo this gameweek</button>
       <button class="btn ghost" id="sharePie">Share picks chart</button>
-      <span class="note">"Undo" reverses everyone's GW${n} changes and reopens it. Use "Edit a pick" below to fix just one manager without touching the rest.</span></div></div>
-    <div class="panel"><div class="phead"><h2>Edit a pick</h2>
+      <span class="note">"Undo" reverses everyone's GW${n} changes and reopens it. Use "Edit a pick or result" below to fix just one manager without touching the rest.</span></div></div>
+    <div class="panel"><div class="phead"><h2>Edit a pick or result</h2>
       <span class="hint">Change one manager's team, result, or cards — recalculates just that pick</span></div>
       <div style="padding:6px 16px 14px">${editRows}</div></div>`;
     document.getElementById('undo').onclick = ()=>undoGameweek(n);
