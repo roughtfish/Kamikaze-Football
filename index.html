@@ -1768,6 +1768,10 @@ function renderHistory(){
   }
   const mgrs = state.managers.map(m=>m.name);
   const head = `<tr><th>GW</th>${mgrs.map(n=>`<th>${n}</th>`).join('')}</tr>`;
+  const cardBadge = (label, res) => {
+    const cls = !res ? '' : (res==='D' ? 'go' : 'danger');
+    return `<span class="histres ${cls}">${label}</span>`;
+  };
   const rows = gws.map(n=>{
     const g = state.gameweeks[n];
     const resolved = g.status==='resolved';
@@ -1776,8 +1780,12 @@ function renderHistory(){
       if(!p || !p.team) return `<td class="histcell"><span class="strength">—</span></td>`;
       const res = g.results && g.results[p.team];
       const resTag = (resolved && res) ? `<span class="histres ${res==='W'?'go':res==='L'?'danger':'warn'}">${res}</span>` : '';
-      const flags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
-      return `<td class="histcell"><span class="histteam">${p.team}</span>${resTag}${flags?`<span class="strength" style="display:block">${flags}</span>`:''}</td>`;
+      const flagParts = [];
+      if(p.auto) flagParts.push(`<span class="strength">auto</span>`);
+      if(p.wildcard) flagParts.push(cardBadge('WC', resolved ? res : null));
+      if(p.drawcard) flagParts.push(cardBadge('DC', resolved ? res : null));
+      const flagsHtml = flagParts.length ? `<span style="display:block;margin-top:2px">${flagParts.join(' ')}</span>` : '';
+      return `<td class="histcell"><span class="histteam">${p.team}</span>${resTag}${flagsHtml}</td>`;
     }).join('');
     return `<tr><td class="num"><b>${n}</b>${resolved?'':' <span class="strength">open</span>'}</td>${cells}</tr>`;
   }).join('');
