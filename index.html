@@ -848,7 +848,7 @@ function drawPieDataUrl(entries, total, size=200){
 
   // 1) side wall — only the arc that falls in the front-facing bottom half
   slices.forEach(s=>{
-    const wallColor = darkenHex(s.color, 0.8);
+    const wallColor = darkenHex(s.color, 0.92);
     const steps = 36;
     for(let k=0;k<steps;k++){
       const t0 = s.a0 + (s.a1-s.a0)*k/steps;
