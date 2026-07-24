@@ -2392,8 +2392,12 @@ function computeFormGuide(n=5){
       if(!p || !p.team) return null;
       return (g.results && g.results[p.team]) || null;
     });
-    return {name:m.name, form, eliminated:!!m.eliminated};
-  }).filter(r=>r.form.some(x=>x!==null));
+    const wins = form.filter(r=>r==='W').length;
+    const draws = form.filter(r=>r==='D').length;
+    const losses = form.filter(r=>r==='L').length;
+    return {name:m.name, form, eliminated:!!m.eliminated, wins, draws, losses};
+  }).filter(r=>r.form.some(x=>x!==null))
+    .sort((a,b)=> b.wins-a.wins || b.draws-a.draws || a.losses-b.losses);
 }
 function renderFormGuidePanel(){
   const board = computeFormGuide(5);
