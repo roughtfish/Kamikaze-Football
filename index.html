@@ -744,6 +744,17 @@ function ensureHtml2Canvas(){
   });
   return _h2cLoading;
 }
+// keeps a running cache of real crest URLs per team, filled in from every
+// fixtures fetch over the season — so features that need a crest for a team
+// not currently in this week's fixtures (e.g. a manager's full remaining list)
+// still have a real badge on file rather than always falling back to initials
+function cacheTeamCrests(events){
+  state.teamCrests = state.teamCrests || {};
+  (events||[]).forEach(e=>{
+    if(e.homeCrest) state.teamCrests[e.home] = e.homeCrest;
+    if(e.awayCrest) state.teamCrests[e.away] = e.awayCrest;
+  });
+}
 function crestBadge(name, crestUrl){
   if(crestUrl){
     const proxied = `${FD_PROXY_URL}?crest=${encodeURIComponent(crestUrl)}`;
@@ -1050,7 +1061,7 @@ async function shareManagerCard(m){
     };
     const teamRows = available.map(t=>`
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1c2a44;">
-        ${crestBadge(t.name, null)}
+        ${crestBadge(t.name, (state.teamCrests && state.teamCrests[t.name]) || null)}
         <span style="flex:1;font-size:14px;color:#eaf1fb;margin-left:10px;">${t.name}</span>
         <span style="font-family:ui-monospace,monospace;font-size:12px;color:#8ea0c0;">${t.left} left</span>
       </div>`).join('');
@@ -1283,7 +1294,7 @@ function renderPicks(){
   if((!g.fixtures || !g.fixtures.length) && !g._fxAutoTried){
     g._fxAutoTried = true;
     tsdbFetchRound(n).then(({events})=>{
-      if(events.length){ g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null, kickoff:e.kickoff||null})); save(); }
+      if(events.length){ g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null, kickoff:e.kickoff||null})); cacheTeamCrests(events); save(); }
     }).catch(()=>{ /* silent — manual fetch button still there as a fallback */ });
   }
   const alive = aliveManagers();
@@ -1373,7 +1384,7 @@ function renderPicks(){
         note.textContent = total ? `Found ${total} fixtures but couldn't match any team names.` : 'No fixtures found for that round/season yet.';
         return;
       }
-      g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null, kickoff:e.kickoff||null}));
+      g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null, kickoff:e.kickoff||null})); cacheTeamCrests(events);
       readPicksFromForm(); save();
       toast(`Loaded ${events.length} fixtures${unmatched?` (${unmatched} unmatched)`:''}`);
       setTab('picks');
@@ -1517,7 +1528,7 @@ function renderResolve(){
   if((!g.fixtures || !g.fixtures.length) && !g._fxAutoTried){
     g._fxAutoTried = true;
     tsdbFetchRound(n).then(({events})=>{
-      if(events.length){ g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null, kickoff:e.kickoff||null})); save(); }
+      if(events.length){ g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null, kickoff:e.kickoff||null})); cacheTeamCrests(events); save(); }
     }).catch(()=>{});
   }
   // fill any missing picks with the first available away team
