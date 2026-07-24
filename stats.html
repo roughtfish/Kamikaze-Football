@@ -261,6 +261,26 @@ function renderStats(snap){
     </div>`;
   }
 
+  // Head to head leaderboard — record when a manager's pick faced another's
+  const h2hBoard = snap.headToHeadLeaderboard || [];
+  let h2hHtml = '';
+  if(h2hBoard.length){
+    h2hHtml = `<div class="panel">
+      <div class="phead"><h2>Head to head leaderboard</h2>
+        <span class="hint">Record when a manager's pick faced another manager's pick</span></div>
+      <div class="board">
+        <div class="row head" style="grid-template-columns:28px 1fr 90px"><span>#</span><span>Manager</span><span class="h-wdl">W·D·L</span></div>
+        ${h2hBoard.map((t,i)=>`
+          <div class="row mgr" style="grid-template-columns:28px 1fr 90px">
+            <span class="rank ${i===0?'lead':''}">${i+1}</span>
+            <span class="who"><span class="nm">${t.name}</span></span>
+            <span class="wdl"><b>${t.wins}</b>·${t.draws}·${t.losses}</span>
+          </div>`).join('')}
+      </div>
+      <div class="legend">Counted whenever a manager's pick played against another manager's pick in the same real match, across the whole season.</div>
+    </div>`;
+  }
+
   const championHtml = snap.winner ? `
     <div class="panel champpanel">
       <div style="padding:22px 18px;text-align:center;">
@@ -280,6 +300,7 @@ function renderStats(snap){
       <div class="legend">WC = Wildcard · DC = Drawcard · ✓ successful (drew) · ✗ unsuccessful · outline = not used yet</div>
     </div>
     ${ptvHtml}
+    ${h2hHtml}
     <p class="footnote">Last updated ${published}</p>
     <p class="footnote" style="margin-top:6px">
       <a href="${window.location.href}" style="color:var(--muted);font-size:12px;" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>alert('Link copied!'))">📋 Copy link to share with players</a>
