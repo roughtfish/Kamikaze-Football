@@ -812,11 +812,11 @@ const TEAM_COLORS = {
 function teamColor(name, i){ return TEAM_COLORS[name] || PIE_COLORS[i % PIE_COLORS.length]; }
 // html2canvas can't rasterize CSS conic-gradient, so draw the pie as real
 // pixels on a canvas and embed it as a plain <img> — that snapshots reliably
-function darkenHex(hex, amt){
+function darkenHex(hex, factor){
   const c = hex.replace('#','');
-  const r = Math.max(0, parseInt(c.substr(0,2),16) - amt);
-  const g = Math.max(0, parseInt(c.substr(2,2),16) - amt);
-  const b = Math.max(0, parseInt(c.substr(4,2),16) - amt);
+  const r = Math.round(parseInt(c.substr(0,2),16) * factor);
+  const g = Math.round(parseInt(c.substr(2,2),16) * factor);
+  const b = Math.round(parseInt(c.substr(4,2),16) * factor);
   return `rgb(${r},${g},${b})`;
 }
 // draws a tilted, extruded ("hockey puck") 3D pie: a flattened ellipse on top
@@ -848,7 +848,7 @@ function drawPieDataUrl(entries, total, size=200){
 
   // 1) side wall — only the arc that falls in the front-facing bottom half
   slices.forEach(s=>{
-    const wallColor = darkenHex(s.color, 55);
+    const wallColor = darkenHex(s.color, 0.6);
     const steps = 36;
     for(let k=0;k<steps;k++){
       const t0 = s.a0 + (s.a1-s.a0)*k/steps;
