@@ -769,6 +769,7 @@ async function publishPublicStats(){
     history,
     teamPopularity: computeTeamPopularity(),
     headToHeadLeaderboard: computeHeadToHeadLeaderboard(),
+    autoPickRecord: computeAutoPickRecord(),
     winner: winner ? {
       name: winner.name, lives: winner.lives,
       wins: winner.wins, draws: winner.draws, losses: winner.losses,
@@ -2019,6 +2020,76 @@ function renderLimits(){
 /* --- Pick history --- */
 // how many times each team has been picked across the whole season so far,
 // including teams with zero picks — so "only picked twice all year" is visible too
+// how auto-assigned picks (nobody sent one in that week) have actually performed
+// against manually-entered ones, across the whole season — and whether the
+// robot's win rate would beat any real manager's own overall win rate
+function computeAutoPickRecord(){
+  const auto = {picks:0, wins:0, draws:0, losses:0};
+  const manual = {picks:0, wins:0, draws:0, losses:0};
+  Object.values(state.gameweeks||{}).forEach(g=>{
+    if(g.status!=='resolved') return;
+    Object.values(g.picks||{}).forEach(p=>{
+      if(!p || !p.team) return;
+      const res = g.results && g.results[p.team];
+      if(!res) return;
+      const bucket = p.auto ? auto : manual;
+      bucket.picks++;
+      if(res==='W') bucket.wins++; else if(res==='D') bucket.draws++; else bucket.losses++;
+    });
+  });
+  const rate = b => b.picks ? b.wins/b.picks : null;
+  const autoRate = rate(auto);
+  const beaten = autoRate===null ? [] : state.managers.filter(m=>{
+    const total = m.wins+m.draws+m.losses;
+    return total>0 && (m.wins/total) < autoRate;
+  });
+  return {auto, manual, autoRate, manualRate: rate(manual), beaten: beaten.map(m=>m.name)};
+}
+function renderAutoPickPanel(){
+  const r = computeAutoPickRecord();
+  if(!r.auto.picks) return '';
+  const pct = x => x===null ? '—' : Math.round(x*100)+'%';
+  return `<div class="panel"><div class="phead"><h2>Q's record</h2>
+      <span class="hint">How Q's picks have actually performed</span></div>
+    <div style="padding:10px 16px 6px">
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-soft);">
+        <span style="font-size:14px;">Q</span>
+        <span style="font-family:var(--num);font-size:13px;color:var(--muted);">${r.auto.picks} picks · <b style="color:var(--ink)">${r.auto.wins}</b>·${r.auto.draws}·${r.auto.losses} · ${pct(r.autoRate)} win rate</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;">
+        <span style="font-size:14px;">Everyone else</span>
+        <span style="font-family:var(--num);font-size:13px;color:var(--muted);">${r.manual.picks} picks · <b style="color:var(--ink)">${r.manual.wins}</b>·${r.manual.draws}·${r.manual.losses} · ${pct(r.manualRate)} win rate</span>
+      </div>
+    </div>
+    <div class="toolbar"><span class="note">${r.beaten.length ? `Q's win rate currently beats ${r.beaten.length} manager${r.beaten.length===1?'':'s'} on their own overall win rate: ${r.beaten.join(', ')}.` : "Q isn't beating anyone on win rate yet."}</span></div>
+    <div class="toolbar"><button class="btn ghost shareAutoPick">Share Q's record</button></div></div>`;
+}
+async function shareAutoPickImage(){
+  try{
+    const r = computeAutoPickRecord();
+    if(!r.auto.picks){ toast("No picks recorded for Q yet"); return; }
+    const pct = x => x===null ? '—' : Math.round(x*100)+'%';
+    const html = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
+        <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
+      </div>
+      <div style="font-size:13px;color:#8ea0c0;margin-bottom:16px;">Q's record</div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #1c2a44;">
+        <span style="font-size:14px;color:#eaf1fb;">Q</span>
+        <span style="font-family:ui-monospace,monospace;font-size:13px;color:#8ea0c0;">${r.auto.wins}·${r.auto.draws}·${r.auto.losses} · ${pct(r.autoRate)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;">
+        <span style="font-size:14px;color:#eaf1fb;">Everyone else</span>
+        <span style="font-family:ui-monospace,monospace;font-size:13px;color:#8ea0c0;">${r.manual.wins}·${r.manual.draws}·${r.manual.losses} · ${pct(r.manualRate)}</span>
+      </div>
+      <div style="font-size:12px;color:#5e7095;margin-top:14px;">${r.beaten.length ? `Beats ${r.beaten.length} manager${r.beaten.length===1?'':'s'} on win rate: ${r.beaten.join(', ')}` : "Not beating anyone on win rate yet"}</div>`;
+    await exportCardAsShare(html, `kamikaze-${(state.season||'season').replace(/\//g,'-')}-q-record.png`, `${state.season||''} Q's record`);
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
+}
 function computeTeamPopularity(){
   const counts = {};
   Object.values(state.gameweeks||{}).forEach(g=>{
@@ -2117,9 +2188,11 @@ function renderHistory(){
     </table></div>
     <div class="toolbar"><span class="note">W/D/L shown once a gameweek's resolved · auto = no pick received, auto-assigned · WC/DC = card played that week.</span></div></div>
     ${renderHeadToHeadLeaderboardPanel()}
-    ${renderTeamPopularityPanel()}`;
+    ${renderTeamPopularityPanel()}
+    ${renderAutoPickPanel()}`;
   view.querySelectorAll('.shareH2HBoard').forEach(b=>{ b.onclick = ()=>shareHeadToHeadLeaderboardImage(); });
   view.querySelectorAll('.shareTeamPop').forEach(b=>{ b.onclick = ()=>shareTeamPopularityImage(); });
+  view.querySelectorAll('.shareAutoPick').forEach(b=>{ b.onclick = ()=>shareAutoPickImage(); });
 }
 
 /* --- Rules --- */
