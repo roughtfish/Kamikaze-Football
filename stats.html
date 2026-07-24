@@ -218,16 +218,20 @@ function renderStats(snap){
   const rows = (snap.managers||[]);
   let aliveRank = 0, firstDead = true, rowsHtml = '';
   rowsHtml += `<div class="row head"><span>#</span><span>Manager</span><span class="h-wdl">W·D·L</span><span style="text-align:right">Lives</span></div>`;
+  const teamsTotal = snap.teamsCount || 20;
   rows.forEach(m=>{
     if(m.eliminated && firstDead){ rowsHtml += `<div class="sep">Eliminated</div>`; firstDead=false; }
     if(!m.eliminated) aliveRank++;
     const L = m.lives;
     const lifeCls = L<=2 ? 'danger' : L<=5 ? 'warn' : 'go';
     const pips = Array.from({length:startingLives}, (_,i)=>pip(i, L)).join('');
+    const teamsLeft = Math.max(0, teamsTotal - (m.bannedCount||0));
+    const cardsLeft = (m.wildcardUsed?0:1) + (m.drawcardUsed?0:1);
     rowsHtml += `<div class="row mgr ${m.eliminated?'out':''}">
       <span class="rank ${(!m.eliminated && aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
       <span class="who"><span class="nm">${m.name}</span>
         <span class="cards">${cardPip('WC', m.wildcardUsed, m.wildcardResult)}${cardPip('DC', m.drawcardUsed, m.drawcardResult)}</span>
+        <span class="note" style="display:block;font-size:11px;margin-top:2px;">${teamsLeft} teams left · ${cardsLeft} card${cardsLeft===1?'':'s'} left</span>
       </span>
       <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
       <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span></span>
