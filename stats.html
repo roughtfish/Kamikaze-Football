@@ -406,11 +406,10 @@ function renderStats(snap){
   const ext = snap.seasonExtremes;
   let extHtml = '';
   const ordSuffix = n => { const j=n%10,k=n%100; if(j===1&&k!==11)return'st'; if(j===2&&k!==12)return'nd'; if(j===3&&k!==13)return'rd'; return'th'; };
-  if(ext && (ext.biggestUpset || ext.bestSwing || ext.worstSwing)){
+  if(ext && (ext.biggestUpset || ext.bestSwing)){
     const lines = [];
     if(ext.biggestUpset) lines.push(`<b>Biggest upset:</b> ${ext.biggestUpset.manager} backed ${ext.biggestUpset.team} (ranked ${ext.biggestUpset.position}${ordSuffix(ext.biggestUpset.position)} at the time) in GW${ext.biggestUpset.gw} — and won.`);
     if(ext.bestSwing && ext.bestSwing.delta>0) lines.push(`<b>Best single week:</b> ${ext.bestSwing.manager} gained ${ext.bestSwing.delta} life in GW${ext.bestSwing.gw} (${ext.bestSwing.team}, Drawcard hit).`);
-    if(ext.worstSwing && ext.worstSwing.delta<0) lines.push(`<b>Worst single week:</b> ${ext.worstSwing.manager} lost ${Math.abs(ext.worstSwing.delta)} life${Math.abs(ext.worstSwing.delta)===1?'':'s'} in GW${ext.worstSwing.gw} (${ext.worstSwing.team}, ${ext.worstSwing.result==='L'?'loss':'draw'}).`);
     extHtml = `<div class="panel"><div class="phead"><h2>Season extremes</h2></div>
       <div style="padding:8px 16px 14px;display:grid;gap:8px;font-size:13.5px;color:var(--muted);">${lines.map(l=>`<div>${l}</div>`).join('')}</div></div>`;
   }
