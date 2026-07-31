@@ -183,10 +183,10 @@ const PUBLIC_PATH = 'kamikaze_pl_public';   // matches the admin console's PUBLI
 
 const view = document.getElementById('view');
 
-function cardPip(label, usedFlag, result){
+function cardPip(label, usedFlag, result, successResult='D'){
   if(!usedFlag) return `<span class="cpip">${label}</span>`;
   if(result===undefined || result===null) return `<span class="cpip used">${label}</span>`;
-  const ok = result === 'D';
+  const ok = result === successResult;
   return `<span class="cpip ${ok?'ok':'bad'}">${label}${ok?'✓':'✗'}</span>`;
 }
 
@@ -226,11 +226,11 @@ function renderStats(snap){
     const lifeCls = L<=2 ? 'danger' : L<=5 ? 'warn' : 'go';
     const pips = Array.from({length:startingLives}, (_,i)=>pip(i, L)).join('');
     const teamsLeft = Math.max(0, teamsTotal - (m.bannedCount||0));
-    const cardsLeft = (m.wildcardUsed?0:1) + (m.drawcardUsed?0:1);
+    const cardsLeft = (m.wildcardUsed?0:1) + (m.drawcardUsed?0:1) + (m.doubleOrNothingUsed?0:1);
     rowsHtml += `<div class="row mgr ${m.eliminated?'out':''}">
       <span class="rank ${(!m.eliminated && aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
       <span class="who"><span class="nm">${m.name}</span>
-        <span class="cards">${cardPip('WC', m.wildcardUsed, m.wildcardResult)}${cardPip('DC', m.drawcardUsed, m.drawcardResult)}</span>
+        <span class="cards">${cardPip('WC', m.wildcardUsed, m.wildcardResult)}${cardPip('DC', m.drawcardUsed, m.drawcardResult)}${cardPip('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}</span>
         <span class="note" style="display:block;font-size:11px;margin-top:2px;">${teamsLeft} teams left · ${cardsLeft} card${cardsLeft===1?'':'s'} left</span>
       </span>
       <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
@@ -374,14 +374,14 @@ function renderStats(snap){
   const cardTiming = snap.cardTiming || [];
   let cardTimingHtml = '';
   if(cardTiming.length){
-    const cell = (gwNum, res) => gwNum===null ? '<span class="note">unused</span>'
-      : `GW${gwNum} <span class="histres ${res==='D'?'go':'danger'}">${res==='D'?'✓':'✗'}</span>`;
+    const cell = (gwNum, res, successResult='D') => gwNum===null ? '<span class="note">unused</span>'
+      : `GW${gwNum} <span class="histres ${res===successResult?'go':'danger'}">${res===successResult?'✓':'✗'}</span>`;
     cardTimingHtml = `<div class="panel"><div class="phead"><h2>Card timing</h2>
         <span class="hint">Which gameweek each card was played, and whether it paid off</span></div>
       <div style="padding:6px 16px 10px">
         ${cardTiming.map(t=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-soft);">
           <span style="font-size:13px;">${t.name}</span>
-          <span style="font-size:12.5px;color:var(--muted);">WC: ${cell(t.wildcardGw,t.wildcardResult)} · DC: ${cell(t.drawcardGw,t.drawcardResult)}</span>
+          <span style="font-size:12.5px;color:var(--muted);">WC: ${cell(t.wildcardGw,t.wildcardResult)} · DC: ${cell(t.drawcardGw,t.drawcardResult)} · DoN: ${cell(t.donGw,t.donResult,'W')}</span>
         </div>`).join('')}
       </div></div>`;
   }
@@ -409,7 +409,10 @@ function renderStats(snap){
   if(ext && (ext.biggestUpset || ext.bestSwing)){
     const lines = [];
     if(ext.biggestUpset) lines.push(`<b>Biggest upset:</b> ${ext.biggestUpset.manager} backed ${ext.biggestUpset.team} (ranked ${ext.biggestUpset.position}${ordSuffix(ext.biggestUpset.position)} at the time) in GW${ext.biggestUpset.gw} — and won.`);
-    if(ext.bestSwing && ext.bestSwing.delta>0) lines.push(`<b>Best single week:</b> ${ext.bestSwing.manager} gained ${ext.bestSwing.delta} life in GW${ext.bestSwing.gw} (${ext.bestSwing.team}, Drawcard hit).`);
+    if(ext.bestSwing && ext.bestSwing.delta>0){
+      const cardName = ext.bestSwing.delta===2 ? 'Double or Nothing' : 'Drawcard';
+      lines.push(`<b>Best single week:</b> ${ext.bestSwing.manager} gained ${ext.bestSwing.delta} life${ext.bestSwing.delta===1?'':'s'} in GW${ext.bestSwing.gw} (${ext.bestSwing.team}, ${cardName} hit).`);
+    }
     extHtml = `<div class="panel"><div class="phead"><h2>Season extremes</h2></div>
       <div style="padding:8px 16px 14px;display:grid;gap:8px;font-size:13.5px;color:var(--muted);">${lines.map(l=>`<div>${l}</div>`).join('')}</div></div>`;
   }
@@ -420,7 +423,7 @@ function renderStats(snap){
       <div class="phead"><h2>${snap.season||'Standings'}</h2>
         <span class="hint">Gameweek ${snap.gw||'—'} · ${snap.aliveCount||0}/${snap.totalCount||0} alive</span></div>
       <div class="board">${rowsHtml}</div>
-      <div class="legend">WC = Wildcard · DC = Drawcard · ✓ successful (drew) · ✗ unsuccessful · outline = not used yet</div>
+      <div class="legend">WC = Wildcard · DC = Drawcard · DoN = Double or Nothing · ✓ successful · ✗ unsuccessful · outline = not used yet</div>
     </div>
     ${formHtml}
     ${rivalryHtml}
@@ -471,7 +474,17 @@ function renderRulesPage(){
           <tr><td>Game is a <b>win or loss</b></td><td class="num">&minus;1 life</td></tr>
         </table>
         <p>It's used the moment you play it, whatever the result.</p>
-        <p class="note">Wildcard and Drawcard can't both be played on the same pick in the same week.</p>
+
+        <h3>Double or Nothing <span class="rulestag">once per season</span></h3>
+        <p>Play it alongside a pick to raise the stakes on that one result:</p>
+        <table class="grid rulestable">
+          <tr><td>Team <b>wins</b></td><td class="num">+2 lives</td></tr>
+          <tr><td>Team <b>draws</b></td><td class="num">&minus;2 lives</td></tr>
+          <tr><td>Team <b>loses</b></td><td class="num">&minus;4 lives</td></tr>
+        </table>
+        <p>It's used the moment you play it, whatever the result.</p>
+        <p class="note">High risk: the downside is double the upside — a bad result here could end your season outright.</p>
+        <p class="note">Only one card — Wildcard, Drawcard, or Double or Nothing — can be played on a pick in any given week.</p>
 
         <h3>Missed picks</h3>
         <p>If a manager doesn't get a pick in before the deadline, they're not skipped — they're auto-assigned the
@@ -503,8 +516,8 @@ function renderHistoryPage(){
   }
   const mgrs = (snap.managerOrder && snap.managerOrder.length) ? snap.managerOrder : (snap.managers||[]).map(m=>m.name);
   const head = `<tr><th>GW</th>${mgrs.map(n=>`<th>${n}</th>`).join('')}</tr>`;
-  const cardBadge = (label, res) => {
-    const cls = !res ? '' : (res==='D' ? 'go' : 'danger');
+  const cardBadge = (label, res, successResult='D') => {
+    const cls = !res ? '' : (res===successResult ? 'go' : 'danger');
     return `<span class="histres ${cls}">${label}</span>`;
   };
   const rows = history.map(g=>{
@@ -516,6 +529,7 @@ function renderHistoryPage(){
       if(p.auto) flagParts.push(`<span class="note">auto</span>`);
       if(p.wildcard) flagParts.push(cardBadge('WC', g.resolved ? p.result : null));
       if(p.drawcard) flagParts.push(cardBadge('DC', g.resolved ? p.result : null));
+      if(p.doubleOrNothing) flagParts.push(cardBadge('DoN', g.resolved ? p.result : null, 'W'));
       const flagsHtml = flagParts.length ? `<span style="display:block;margin-top:2px">${flagParts.join(' ')}</span>` : '';
       return `<td class="histcell"><span class="histteam">${p.team}</span>${resTag}${flagsHtml}</td>`;
     }).join('');
