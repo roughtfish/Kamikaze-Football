@@ -553,6 +553,16 @@ function getWinner(){
   const alive = aliveManagers();
   return alive.length === 1 ? alive[0] : null;
 }
+// severity band for a life total, scaled to how many lives the season starts
+// with (rather than a fixed number) — e.g. at 15 starting lives, "warn" kicks
+// in once you're at or below half (8), not a flat 5 regardless of season length
+function lifeSeverity(L){
+  const total = state.startingLives || 15;
+  const warnAt = Math.ceil(total/2);
+  if(L<=2) return 'danger';
+  if(L<=warnAt) return 'warn';
+  return 'go';
+}
 function used(m,t){ return (m.used && m.used[t]) || 0; }
 function isBanned(m,t){ return used(m,t) >= state.maxPicksPerTeam; }
 function availableTeams(m){ return state.teams.filter(t=>!isBanned(m,t.name)); }
@@ -1280,7 +1290,7 @@ async function shareStandingsImage(){
       }
       if(!m.eliminated) aliveRank++;
       const L = m.lives;
-      const liveColor = L<=2 ? '#ff5b7e' : L<=5 ? '#ffc043' : '#19e2a0';
+      const liveColor = lifeSeverity(L)==='danger' ? '#ff5b7e' : lifeSeverity(L)==='warn' ? '#ffc043' : '#19e2a0';
       const nameStyle = m.eliminated ? 'color:#5e7095;text-decoration:line-through;' : 'color:#eaf1fb;';
       rowsHtml += `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #1c2a44;">
         <span style="width:22px;font-family:Barlow,sans-serif;font-weight:700;font-size:15px;color:${m.eliminated?'#5e7095':'#8ea0c0'};text-align:center;flex-shrink:0;">${m.eliminated?'–':aliveRank}</span>
@@ -1380,7 +1390,7 @@ function render(){
 function pip(i, lives){
   let cls='pip';
   if(i < lives){
-    cls += lives<=2 ? ' danger' : lives<=5 ? ' warn' : ' on';
+    cls += ' ' + (lifeSeverity(lives)==='danger' ? 'danger' : lifeSeverity(lives)==='warn' ? 'warn' : 'on');
   }
   return `<span class="${cls}"></span>`;
 }
@@ -1413,7 +1423,7 @@ function renderStandings(){
     if(m.eliminated && firstDead){ html += `<div class="sep">Eliminated</div>`; firstDead=false; }
     if(!m.eliminated) aliveRank++;
     const L = m.lives;
-    const lifeCls = L<=0?'danger':L<=2?'danger':L<=5?'warn':'go';
+    const lifeCls = L<=0 ? 'danger' : lifeSeverity(L);
     const pips = Array.from({length:15}, (_,i)=>pip(i, L)).join('');
     const bans = state.teams.filter(t=>isBanned(m,t.name)).length;
     const cardTitle = (used, result, name, successResult)=>{
