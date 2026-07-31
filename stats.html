@@ -210,9 +210,11 @@ function renderStats(snap){
     return;
   }
   const startingLives = (latestSnap && latestSnap.startingLives) || 15;
+  const warnAt = Math.ceil(startingLives/2);
+  function severity(L){ return L<=2 ? 'danger' : L<=warnAt ? 'warn' : 'go'; }
   function pip(i, lives){
     let cls='pip';
-    if(i<lives){ cls += lives<=2 ? ' danger' : lives<=5 ? ' warn' : ' on'; }
+    if(i<lives){ cls += ' ' + (severity(lives)==='go' ? 'on' : severity(lives)); }
     return `<span class="${cls}"></span>`;
   }
   const rows = (snap.managers||[]);
@@ -223,7 +225,7 @@ function renderStats(snap){
     if(m.eliminated && firstDead){ rowsHtml += `<div class="sep">Eliminated</div>`; firstDead=false; }
     if(!m.eliminated) aliveRank++;
     const L = m.lives;
-    const lifeCls = L<=2 ? 'danger' : L<=5 ? 'warn' : 'go';
+    const lifeCls = severity(L);
     const pips = Array.from({length:startingLives}, (_,i)=>pip(i, L)).join('');
     const teamsLeft = Math.max(0, teamsTotal - (m.bannedCount||0));
     const cardsLeft = (m.wildcardUsed?0:1) + (m.drawcardUsed?0:1) + (m.doubleOrNothingUsed?0:1);
