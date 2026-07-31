@@ -112,8 +112,8 @@
   .who .nm{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .cards{display:flex;gap:4px}
   .cardpip{
-    font-family:var(--disp);font-size:10px;font-weight:700;width:17px;height:17px;border-radius:4px;
-    display:grid;place-items:center;cursor:pointer;border:1px solid var(--line);color:var(--faint);user-select:none
+    font-family:var(--disp);font-size:10px;font-weight:700;min-width:17px;height:17px;border-radius:4px;
+    display:inline-flex;align-items:center;justify-content:center;padding:0 3px;cursor:pointer;border:1px solid var(--line);color:var(--faint);user-select:none
   }
   .cardpip.avail{border-color:var(--go-dim);color:var(--go);background:rgba(25,226,160,.08)}
   .cardpip.used{opacity:.45;text-decoration:line-through}
@@ -391,6 +391,8 @@
    - Each team usable max 2x per manager (then banned for them).
    - Wildcard (1/season): a Draw costs no life.
    - Drawcard (1/season): betting a draw -> Draw +1 life, Win/Loss -1 life.
+   - Double or Nothing (1/season): raises the stakes -> Win +2, Draw -2, Loss -4.
+   - Only one of Wildcard/Drawcard/Double or Nothing can be played on a pick at once.
    - 0 or fewer lives = eliminated.
    - No pick received -> first AWAY team in the fixture list they haven't used twice.
    - Tiebreak: most lives -> fewest losses -> lowest summed strength of remaining teams.
@@ -576,7 +578,7 @@ function materializeAutos(g){
     const p = g.picks[m.name];
     if(p && p.team) return;                       // real pick already in
     const auto = autoPickTeam(m,g);
-    if(auto) g.picks[m.name] = {team:auto, auto:true, wildcard:(p&&p.wildcard)||false, drawcard:(p&&p.drawcard)||false};
+    if(auto) g.picks[m.name] = {team:auto, auto:true, wildcard:(p&&p.wildcard)||false, drawcard:(p&&p.drawcard)||false, doubleOrNothing:(p&&p.doubleOrNothing)||false};
   });
 }
 let viewGw = null;   // which gameweek you're currently looking at — may differ from state.currentGw
@@ -735,6 +737,7 @@ async function publishPublicStats(){
       wins: m.wins, draws: m.draws, losses: m.losses,
       wildcardUsed: !!m.wildcardUsed, wildcardResult: m.wildcardResult || null,
       drawcardUsed: !!m.drawcardUsed, drawcardResult: m.drawcardResult || null,
+      doubleOrNothingUsed: !!m.doubleOrNothingUsed, doubleOrNothingResult: m.doubleOrNothingResult || null,
       bannedCount: state.teams.filter(t=>isBanned(m,t.name)).length,
       pickedTeamValue: ptv.total, pickedTeamValueCount: ptv.count
     };
@@ -749,7 +752,7 @@ async function publishPublicStats(){
       Object.entries(g.picks||{}).forEach(([name,p])=>{
         if(!p || !p.team) return;
         picks[name] = {
-          team: p.team, auto: !!p.auto, wildcard: !!p.wildcard, drawcard: !!p.drawcard,
+          team: p.team, auto: !!p.auto, wildcard: !!p.wildcard, drawcard: !!p.drawcard, doubleOrNothing: !!p.doubleOrNothing,
           result: (resolved && g.results) ? (g.results[p.team] || null) : null
         };
       });
@@ -1201,10 +1204,10 @@ async function shareManagerCard(m){
       .filter(t=>!isBanned(m,t.name))
       .map(t=>({name:t.name, left: state.maxPicksPerTeam - used(m,t.name), strength:t.strength}))
       .sort((a,b)=>b.strength-a.strength);
-    const cardStatus = (label, usedFlag, result)=>{
+    const cardStatus = (label, usedFlag, result, successResult='D')=>{
       if(!usedFlag) return `<span style="font-size:11px;font-weight:700;color:#19e2a0;border:1px solid #0e7d5c;background:rgba(25,226,160,.08);border-radius:5px;padding:2px 7px;">${label} available</span>`;
       if(result===undefined || result===null) return `<span style="font-size:11px;font-weight:700;color:#8ea0c0;border:1px solid #283a5c;border-radius:5px;padding:2px 7px;">${label} used</span>`;
-      const ok = result==='D';
+      const ok = result===successResult;
       const color = ok ? '#19e2a0' : '#ff5b7e';
       return `<span style="font-size:11px;font-weight:700;color:${color};border:1px solid ${color};border-radius:5px;padding:2px 7px;">${label} used ${ok?'✓':'✗'}</span>`;
     };
@@ -1221,9 +1224,10 @@ async function shareManagerCard(m){
       </div>
       <div style="font-size:20px;font-weight:700;color:#eaf1fb;margin:6px 0 2px;">${m.name}</div>
       <div style="font-size:13px;color:#8ea0c0;margin-bottom:12px;">${m.lives} lives · ${m.wins}·${m.draws}·${m.losses} · GW ${gw()}</div>
-      <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
         ${cardStatus('WC', m.wildcardUsed, m.wildcardResult)}
         ${cardStatus('DC', m.drawcardUsed, m.drawcardResult)}
+        ${cardStatus('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}
       </div>
       <div style="font-size:12px;color:#5e7095;text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:4px;">Teams left (${available.length})</div>
       <div>${teamRows || '<div style="color:#8ea0c0;font-size:13px;padding:8px 0;">No teams left to pick</div>'}</div>`;
@@ -1255,12 +1259,12 @@ async function shareWinnerImage(winner){
   }
 }
 async function shareStandingsImage(){
-  function cardBadge(label, usedFlag, result){
+  function cardBadge(label, usedFlag, result, successResult='D'){
     if(!usedFlag) return `<span style="font-size:9px;font-weight:600;color:#5e7095;border:1px solid #283a5c;border-radius:4px;padding:1px 4px;">${label}</span>`;
     if(result===undefined || result===null){
       return `<span style="font-size:9px;font-weight:600;color:#8ea0c0;border:1px solid #283a5c;background:#16223a;border-radius:4px;padding:1px 4px;">${label}</span>`;
     }
-    const success = result==='D';
+    const success = result===successResult;
     const color = success ? '#19e2a0' : '#ff5b7e';
     return `<span style="font-size:9px;font-weight:600;color:${color};border:1px solid ${color};border-radius:4px;padding:1px 4px;">${label}${success?'✓':'✗'}</span>`;
   }
@@ -1279,7 +1283,7 @@ async function shareStandingsImage(){
       rowsHtml += `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #1c2a44;">
         <span style="width:22px;font-family:Barlow,sans-serif;font-weight:700;font-size:15px;color:${m.eliminated?'#5e7095':'#8ea0c0'};text-align:center;flex-shrink:0;">${m.eliminated?'–':aliveRank}</span>
         <span style="flex:1;font-size:14px;${nameStyle}">${m.name}</span>
-        <span style="display:flex;gap:3px;flex-shrink:0;">${cardBadge('WC', m.wildcardUsed, m.wildcardResult)}${cardBadge('DC', m.drawcardUsed, m.drawcardResult)}</span>
+        <span style="display:flex;gap:3px;flex-shrink:0;">${cardBadge('WC', m.wildcardUsed, m.wildcardResult)}${cardBadge('DC', m.drawcardUsed, m.drawcardResult)}${cardBadge('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}</span>
         <span style="font-family:ui-monospace,monospace;font-size:12.5px;color:#8ea0c0;width:52px;text-align:center;flex-shrink:0;">${m.wins}·${m.draws}·${m.losses}</span>
         <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:${liveColor};width:22px;text-align:right;flex-shrink:0;">${L}</span>
       </div>`;
@@ -1292,11 +1296,11 @@ async function shareStandingsImage(){
       <div style="font-size:13px;color:#8ea0c0;margin-bottom:6px;">Standings · Gameweek ${gw()} · ${aliveManagers().length} alive</div>
       <div style="display:flex;gap:8px;padding:4px 0 8px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#5e7095;">
         <span style="width:22px;text-align:center;flex-shrink:0;">#</span><span style="flex:1;">Manager</span>
-        <span style="width:62px;flex-shrink:0;">Cards</span>
+        <span style="width:84px;flex-shrink:0;">Cards</span>
         <span style="width:52px;text-align:center;flex-shrink:0;">W·D·L</span><span style="width:22px;text-align:right;flex-shrink:0;">Lives</span>
       </div>
       <div style="border-top:1px solid #1c2a44;">${rowsHtml}</div>
-      <div style="font-size:9.5px;color:#5e7095;margin-top:12px;">WC = Wildcard · DC = Drawcard · ✓ successful (drew) · ✗ unsuccessful · grey = used, unsuccessful unrecorded · outline only = not used</div>`;
+      <div style="font-size:9.5px;color:#5e7095;margin-top:12px;">WC = Wildcard · DC = Drawcard · DoN = Double or Nothing · ✓ successful · ✗ unsuccessful · grey = used, unrecorded · outline only = not used</div>`;
     await exportCardAsShare(html, `kamikaze-${(state.season||'standings').replace(/\//g,'-')}-gw${gw()}-standings.png`, `${state.season||''} standings`);
   }catch(e){
     if(e && e.name === 'AbortError') return;
@@ -1410,16 +1414,18 @@ function renderStandings(){
     const lifeCls = L<=0?'danger':L<=2?'danger':L<=5?'warn':'go';
     const pips = Array.from({length:15}, (_,i)=>pip(i, L)).join('');
     const bans = state.teams.filter(t=>isBanned(m,t.name)).length;
-    const cardTitle = (used, result, name)=>{
+    const cardTitle = (used, result, name, successResult)=>{
       if(!used) return `${name}: not used`;
       if(result===undefined || result===null) return `${name}: used`;
-      return `${name}: used — ${result==='D' ? 'successful (drew)' : 'unsuccessful ('+result+')'}`;
+      const successWord = successResult==='W' ? 'won' : 'drew';
+      return `${name}: used — ${result===successResult ? `successful (${successWord})` : 'unsuccessful ('+result+')'}`;
     };
-    const wc = `<span class="cardpip ${m.wildcardUsed?'used':'avail'}" data-card="wild" data-m="${m.name}" title="${cardTitle(m.wildcardUsed, m.wildcardResult, 'Wildcard')}">W</span>`;
-    const dc = `<span class="cardpip ${m.drawcardUsed?'used':'avail'}" data-card="draw" data-m="${m.name}" title="${cardTitle(m.drawcardUsed, m.drawcardResult, 'Drawcard')}">D</span>`;
+    const wc = `<span class="cardpip ${m.wildcardUsed?'used':'avail'}" data-card="wild" data-m="${m.name}" title="${cardTitle(m.wildcardUsed, m.wildcardResult, 'Wildcard', 'D')}">W</span>`;
+    const dc = `<span class="cardpip ${m.drawcardUsed?'used':'avail'}" data-card="draw" data-m="${m.name}" title="${cardTitle(m.drawcardUsed, m.drawcardResult, 'Drawcard', 'D')}">D</span>`;
+    const dn = `<span class="cardpip ${m.doubleOrNothingUsed?'used':'avail'}" data-card="don" data-m="${m.name}" title="${cardTitle(m.doubleOrNothingUsed, m.doubleOrNothingResult, 'Double or Nothing', 'W')}">2x</span>`;
     html += `<div class="row mgr ${m.eliminated?'out':''}">
       <span class="rank ${(!m.eliminated&&aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
-      <span class="who"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}</span>
+      <span class="who"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}${dn}</span>
         <button class="shareMgr" data-m="${m.name}" title="Share ${m.name}'s remaining teams &amp; cards">⇪</button>
         ${m.eliminated?'<span class="outtag">Out</span>':''}</span>
       <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span></span>
@@ -1460,14 +1466,18 @@ function renderStandings(){
   view.querySelectorAll('.cardpip').forEach(el=>{
     el.onclick = ()=>{
       const m = state.managers.find(x=>x.name===el.dataset.m);
-      const key = el.dataset.card==='wild' ? 'wildcardUsed' : 'drawcardUsed';
-      const resultKey = el.dataset.card==='wild' ? 'wildcardResult' : 'drawcardResult';
-      const cardName = el.dataset.card==='wild' ? 'Wildcard' : 'Drawcard';
-      const nowUsed = !m[key];
+      const CARD_MAP = {
+        wild: {key:'wildcardUsed', resultKey:'wildcardResult', name:'Wildcard'},
+        draw: {key:'drawcardUsed', resultKey:'drawcardResult', name:'Drawcard'},
+        don:  {key:'doubleOrNothingUsed', resultKey:'doubleOrNothingResult', name:'Double or Nothing'}
+      };
+      const c = CARD_MAP[el.dataset.card];
+      if(!c) return;
+      const nowUsed = !m[c.key];
       const verb = nowUsed ? 'mark as used' : 'mark as available';
-      if(!confirm(`${verb.charAt(0).toUpperCase()+verb.slice(1)}: ${m.name}'s ${cardName}?`)) return;
-      m[key] = nowUsed;
-      if(!nowUsed) m[resultKey] = null;   // manually un-using it clears any recorded outcome
+      if(!confirm(`${verb.charAt(0).toUpperCase()+verb.slice(1)}: ${m.name}'s ${c.name}?`)) return;
+      m[c.key] = nowUsed;
+      if(!nowUsed) m[c.resultKey] = null;   // manually un-using it clears any recorded outcome
       save();
       autoPublishStats();
     };
@@ -1542,6 +1552,7 @@ function renderPicks(){
       <span class="opts">
         <label class="ck"><input type="checkbox" class="pkWild" ${p.wildcard?'checked':''} ${m.wildcardUsed?'disabled':''}> Wildcard</label>
         <label class="ck"><input type="checkbox" class="pkDraw" ${p.drawcard?'checked':''} ${m.drawcardUsed?'disabled':''}> Drawcard</label>
+        <label class="ck"><input type="checkbox" class="pkDoN" ${p.doubleOrNothing?'checked':''} ${m.doubleOrNothingUsed?'disabled':''}> Double or Nothing</label>
       </span>
     </div>`;
   });
@@ -1589,11 +1600,13 @@ function renderPicks(){
   const shareFx = document.getElementById('shareFx');
   if(shareFx) shareFx.onclick = ()=>shareFixturesImage(n, fx);
 
-  // wildcard & drawcard mutually exclusive in a single week
+  // only one card can be active per pick — checking any one clears the others
   view.querySelectorAll('.pickrow').forEach(rowEl=>{
-    const w = rowEl.querySelector('.pkWild'), d = rowEl.querySelector('.pkDraw');
-    if(w&&d){ w.addEventListener('change',()=>{ if(w.checked) d.checked=false; });
-              d.addEventListener('change',()=>{ if(d.checked) w.checked=false; }); }
+    const w = rowEl.querySelector('.pkWild'), d = rowEl.querySelector('.pkDraw'), n2 = rowEl.querySelector('.pkDoN');
+    const boxes = [w,d,n2].filter(Boolean);
+    boxes.forEach(box=>{
+      box.addEventListener('change',()=>{ if(box.checked){ boxes.forEach(other=>{ if(other!==box) other.checked=false; }); } });
+    });
   });
   document.getElementById('savePicks').onclick = savePicks;
   document.getElementById('goResolve').onclick = ()=>setTab('resolve');
@@ -1613,9 +1626,11 @@ function readPicksFromForm(){
     const v = rowEl.querySelector('.pkTeam').value;
     const wild = rowEl.querySelector('.pkWild').checked;
     const draw = rowEl.querySelector('.pkDraw').checked;
+    const donEl = rowEl.querySelector('.pkDoN');
+    const don = donEl ? donEl.checked : false;
     if(v==='') { delete g.picks[name]; return; }
-    if(v==='__AUTO__') g.picks[name] = {auto:true, wildcard:wild, drawcard:draw};
-    else g.picks[name] = {team:v, wildcard:wild, drawcard:draw};
+    if(v==='__AUTO__') g.picks[name] = {auto:true, wildcard:wild, drawcard:draw, doubleOrNothing:don};
+    else g.picks[name] = {team:v, wildcard:wild, drawcard:draw, doubleOrNothing:don};
   });
 }
 function updatePickCount(){
@@ -1657,11 +1672,12 @@ function renderResolve(){
       const currentResult = currentTeam ? (g.results && g.results[currentTeam]) : null;
       const teamOpts = [...state.teams].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>
         `<option value="${t.name}" ${t.name===currentTeam?'selected':''}>${t.name}</option>`).join('');
-      // wildcard/drawcard checkboxes: allow keeping what's already flagged on THIS pick even
+      // wildcard/drawcard/DoN checkboxes: allow keeping what's already flagged on THIS pick even
       // if the card shows used elsewhere — since editing might mean toggling this exact usage off
       const wcDisabled = m.wildcardUsed && !p.wildcard;
       const dcDisabled = m.drawcardUsed && !p.drawcard;
-      const flags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' · ');
+      const donDisabled = m.doubleOrNothingUsed && !p.doubleOrNothing;
+      const flags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':'', p.doubleOrNothing?'DoN':''].filter(Boolean).join(' · ');
       return `<div class="editrow" data-m="${m.name}">
         <span class="nm">${m.name}${flags?` <span class="strength">(${flags})</span>`:''}</span>
         <select class="edTeam">${teamOpts}</select>
@@ -1672,6 +1688,7 @@ function renderResolve(){
         </span>
         <label class="ck"><input type="checkbox" class="edWild" ${p.wildcard?'checked':''} ${wcDisabled?'disabled':''}> WC</label>
         <label class="ck"><input type="checkbox" class="edDraw" ${p.drawcard?'checked':''} ${dcDisabled?'disabled':''}> DC</label>
+        <label class="ck"><input type="checkbox" class="edDoN" ${p.doubleOrNothing?'checked':''} ${donDisabled?'disabled':''}> DoN</label>
         <button class="btn ghost edSave" style="padding:6px 12px">Save</button>
         <button class="btn ghost edCancel" style="padding:6px 12px">Cancel</button>
       </div>`;
@@ -1704,10 +1721,11 @@ function renderResolve(){
         const newResult = activeR ? activeR.dataset.r : null;
         const newWildcard = row.querySelector('.edWild').checked;
         const newDrawcard = row.querySelector('.edDraw').checked;
+        const newDoN = row.querySelector('.edDoN').checked;
         if(!newResult){ toast('Pick Win, Draw or Loss for this manager\u2019s team first'); return; }
-        if(newWildcard && newDrawcard){ toast('Wildcard and Drawcard can\u2019t both be played on the same pick'); return; }
-        if(!confirm(`Update ${managerName}'s GW${n} pick to ${newTeam} (${newResult})${newWildcard?' + Wildcard':''}${newDrawcard?' + Drawcard':''}?`)) return;
-        editManagerPick(n, managerName, newTeam, newResult, newWildcard, newDrawcard);
+        if([newWildcard, newDrawcard, newDoN].filter(Boolean).length > 1){ toast('Only one card can be played on the same pick'); return; }
+        if(!confirm(`Update ${managerName}'s GW${n} pick to ${newTeam} (${newResult})${newWildcard?' + Wildcard':''}${newDrawcard?' + Drawcard':''}${newDoN?' + Double or Nothing':''}?`)) return;
+        editManagerPick(n, managerName, newTeam, newResult, newWildcard, newDrawcard, newDoN);
       };
     });
     view.querySelectorAll('.editrow .edCancel').forEach(b=>{
@@ -1754,7 +1772,7 @@ function renderResolve(){
     const pickers = Object.entries(g.picks||{})
       .filter(([,p])=>p.team===t.name)
       .map(([name,p])=>{
-        const flags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':''].filter(Boolean).join(' ');
+        const flags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':'', p.doubleOrNothing?'DoN':''].filter(Boolean).join(' ');
         return flags ? `${name} (${flags})` : name;
       }).join(', ');
     html += `<div class="fixrow" data-team="${t.name}">
@@ -1832,6 +1850,11 @@ function readPicksLeniently(g){ g.picks = g.picks || {}; } // picks already save
 
 function effect(p, result){
   // returns {delta, outcome:'W'|'D'|'L', note}
+  if(p.doubleOrNothing){
+    if(result==='W') return {delta:+2, outcome:'W', note:'double or nothing hit (+2)'};
+    if(result==='D') return {delta:-2, outcome:'D', note:'double or nothing miss (-2)'};
+    return {delta:-4, outcome:'L', note:'double or nothing miss (-4)'};
+  }
   if(p.drawcard){
     if(result==='D') return {delta:+1, outcome:'D', note:'drawcard hit (+1)'};
     return {delta:-1, outcome:result, note:'drawcard miss (-1)'};
@@ -1843,15 +1866,15 @@ function effect(p, result){
 }
 function renderPreview(g){
   const flagBadge = (label, kind)=>{
-    const color = kind==='auto' ? 'var(--muted)' : kind==='wild' ? 'var(--go)' : 'var(--warn)';
-    const border = kind==='auto' ? 'var(--line)' : kind==='wild' ? 'var(--go-dim)' : 'var(--warn)';
+    const color = kind==='auto' ? 'var(--muted)' : kind==='wild' ? 'var(--go)' : kind==='draw' ? 'var(--warn)' : 'var(--danger)';
+    const border = kind==='auto' ? 'var(--line)' : kind==='wild' ? 'var(--go-dim)' : kind==='draw' ? 'var(--warn)' : 'var(--danger)';
     return `<span style="display:inline-block;font-family:var(--disp);font-size:10px;font-weight:700;
       letter-spacing:.04em;color:${color};border:1px solid ${border};border-radius:4px;
       padding:1px 5px;margin-left:6px;vertical-align:middle;">${label}</span>`;
   };
   const rows = Object.entries(g.picks||{}).filter(([,p])=>p.team).map(([name,p])=>{
     const m = state.managers.find(x=>x.name===name);
-    const badges = (p.auto?flagBadge('AUTO','auto'):'') + (p.wildcard?flagBadge('WC','wild'):'') + (p.drawcard?flagBadge('DC','draw'):'');
+    const badges = (p.auto?flagBadge('AUTO','auto'):'') + (p.wildcard?flagBadge('WC','wild'):'') + (p.drawcard?flagBadge('DC','draw'):'') + (p.doubleOrNothing?flagBadge('DoN','don'):'');
     const nameCell = `${name}${badges}`;
     const res = g.results[p.team];
     if(!res) return `<tr><td>${nameCell}</td><td>${p.team}</td><td class="num">—</td><td class="num">—</td><td>${m.lives}</td></tr>`;
@@ -1882,10 +1905,11 @@ function applyForManager(g, m, pick, result){
   m.used[pick.team] = used(m, pick.team) + 1;
   if(pick.wildcard){ m.wildcardUsed = true; m.wildcardResult = result; }
   if(pick.drawcard){ m.drawcardUsed = true; m.drawcardResult = result; }
+  if(pick.doubleOrNothing){ m.doubleOrNothingUsed = true; m.doubleOrNothingResult = result; }
   m.eliminated = m.lives <= 0;
   g.applied = g.applied || {};
   g.applied[m.name] = {team:pick.team, result, delta:e.delta, outcome:e.outcome,
-    wildcard:!!pick.wildcard, drawcard:!!pick.drawcard};
+    wildcard:!!pick.wildcard, drawcard:!!pick.drawcard, doubleOrNothing:!!pick.doubleOrNothing};
 }
 // exactly reverses whatever applyForManager last recorded for this manager
 // in this gameweek — leaves everyone else, and every other gameweek, untouched
@@ -1899,6 +1923,7 @@ function reverseAppliedForManager(g, m){
   if(applied.team) m.used[applied.team] = Math.max(0, used(m, applied.team) - 1);
   if(applied.wildcard){ m.wildcardUsed = false; m.wildcardResult = null; }
   if(applied.drawcard){ m.drawcardUsed = false; m.drawcardResult = null; }
+  if(applied.doubleOrNothing){ m.doubleOrNothingUsed = false; m.doubleOrNothingResult = null; }
   m.eliminated = m.lives <= 0;
   delete g.applied[m.name];
 }
@@ -1946,7 +1971,7 @@ function undoGameweek(n){
 // without reopening the week or touching anyone else. If the team's result
 // itself is being changed, every other manager who picked that same team is
 // recomputed too, so the shared result stays consistent for everyone on it.
-function editManagerPick(n, managerName, newTeam, newResult, newWildcard, newDrawcard){
+function editManagerPick(n, managerName, newTeam, newResult, newWildcard, newDrawcard, newDoN){
   const g = gwObj(n, true);
   const m = state.managers.find(x=>x.name===managerName);
   if(!m){ toast('Manager not found'); return; }
@@ -1967,7 +1992,7 @@ function editManagerPick(n, managerName, newTeam, newResult, newWildcard, newDra
     });
   }
   g.picks = g.picks || {};
-  g.picks[managerName] = {team:newTeam, wildcard:!!newWildcard, drawcard:!!newDrawcard, auto:false};
+  g.picks[managerName] = {team:newTeam, wildcard:!!newWildcard, drawcard:!!newDrawcard, doubleOrNothing:!!newDoN, auto:false};
   applyForManager(g, m, g.picks[managerName], newResult);
   save();
   toast(`${managerName}'s GW${n} pick updated`);
@@ -2179,7 +2204,10 @@ function renderSeasonExtremesPanel(){
   if(!e.biggestUpset && !e.bestSwing) return '';
   const lines = [];
   if(e.biggestUpset) lines.push(`<b>Biggest upset:</b> ${e.biggestUpset.manager} backed ${e.biggestUpset.team} (ranked ${e.biggestUpset.position}${ordSuffix(e.biggestUpset.position)} at the time) in GW${e.biggestUpset.gw} — and won.`);
-  if(e.bestSwing && e.bestSwing.delta>0) lines.push(`<b>Best single week:</b> ${e.bestSwing.manager} gained ${e.bestSwing.delta} life in GW${e.bestSwing.gw} (${e.bestSwing.team}, Drawcard hit).`);
+  if(e.bestSwing && e.bestSwing.delta>0){
+    const cardName = e.bestSwing.delta===2 ? 'Double or Nothing' : 'Drawcard';
+    lines.push(`<b>Best single week:</b> ${e.bestSwing.manager} gained ${e.bestSwing.delta} life${e.bestSwing.delta===1?'':'s'} in GW${e.bestSwing.gw} (${e.bestSwing.team}, ${cardName} hit).`);
+  }
   return `<div class="panel"><div class="phead"><h2>Season extremes</h2></div>
     <div style="padding:8px 16px 14px;display:grid;gap:8px;font-size:13.5px;color:var(--muted);">${lines.map(l=>`<div>${l}</div>`).join('')}</div>
     <div class="toolbar"><button class="btn ghost shareExtremes">Share season extremes</button></div></div>`;
@@ -2191,7 +2219,10 @@ async function shareExtremesImage(){
     if(!e.biggestUpset && !e.bestSwing){ toast('Not enough resolved gameweeks yet'); return; }
     const lines = [];
     if(e.biggestUpset) lines.push(`<b>Biggest upset</b><br><span style="color:#8ea0c0">${e.biggestUpset.manager} backed ${e.biggestUpset.team} (ranked ${e.biggestUpset.position}${ordSuffix(e.biggestUpset.position)}) in GW${e.biggestUpset.gw} — and won.</span>`);
-    if(e.bestSwing && e.bestSwing.delta>0) lines.push(`<b>Best single week</b><br><span style="color:#8ea0c0">${e.bestSwing.manager} +${e.bestSwing.delta} life in GW${e.bestSwing.gw} (${e.bestSwing.team}).</span>`);
+    if(e.bestSwing && e.bestSwing.delta>0){
+      const cardName = e.bestSwing.delta===2 ? 'Double or Nothing' : 'Drawcard';
+      lines.push(`<b>Best single week</b><br><span style="color:#8ea0c0">${e.bestSwing.manager} +${e.bestSwing.delta} life in GW${e.bestSwing.gw} (${e.bestSwing.team}, ${cardName} hit).</span>`);
+    }
     const html = `
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
         <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
@@ -2270,27 +2301,29 @@ async function shareContrarianImage(){
 // which gameweek each manager played their Wildcard / Drawcard, and how it went
 function computeCardTiming(){
   const timing = {};
-  state.managers.forEach(m=> timing[m.name] = {wildcardGw:null, wildcardResult:null, drawcardGw:null, drawcardResult:null});
+  const blank = ()=>({wildcardGw:null, wildcardResult:null, drawcardGw:null, drawcardResult:null, donGw:null, donResult:null});
+  state.managers.forEach(m=> timing[m.name] = blank());
   Object.keys(state.gameweeks||{}).map(Number).sort((a,b)=>a-b).forEach(n=>{
     const g = state.gameweeks[n];
     if(g.status!=='resolved' || !g.applied) return;
     Object.entries(g.applied).forEach(([name,a])=>{
-      if(!timing[name]) timing[name] = {wildcardGw:null, wildcardResult:null, drawcardGw:null, drawcardResult:null};
+      if(!timing[name]) timing[name] = blank();
       if(a.wildcard && timing[name].wildcardGw===null){ timing[name].wildcardGw=n; timing[name].wildcardResult=a.result; }
       if(a.drawcard && timing[name].drawcardGw===null){ timing[name].drawcardGw=n; timing[name].drawcardResult=a.result; }
+      if(a.doubleOrNothing && timing[name].donGw===null){ timing[name].donGw=n; timing[name].donResult=a.result; }
     });
   });
-  return Object.entries(timing).map(([name,t])=>({name,...t})).filter(t=>t.wildcardGw!==null || t.drawcardGw!==null);
+  return Object.entries(timing).map(([name,t])=>({name,...t})).filter(t=>t.wildcardGw!==null || t.drawcardGw!==null || t.donGw!==null);
 }
 function renderCardTimingPanel(){
   const timing = computeCardTiming();
   if(!timing.length) return '';
-  const cell = (gwNum, res) => gwNum===null ? '<span class="strength">unused</span>'
-    : `GW${gwNum} <span class="histres ${res==='D'?'go':'danger'}">${res==='D'?'✓':'✗'}</span>`;
+  const cell = (gwNum, res, successResult='D') => gwNum===null ? '<span class="strength">unused</span>'
+    : `GW${gwNum} <span class="histres ${res===successResult?'go':'danger'}">${res===successResult?'✓':'✗'}</span>`;
   const rows = timing.map(t=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-soft);">
       <span style="font-size:13px;">${t.name}</span>
-      <span style="font-size:12.5px;color:var(--muted);">WC: ${cell(t.wildcardGw, t.wildcardResult)} · DC: ${cell(t.drawcardGw, t.drawcardResult)}</span>
+      <span style="font-size:12.5px;color:var(--muted);">WC: ${cell(t.wildcardGw, t.wildcardResult)} · DC: ${cell(t.drawcardGw, t.drawcardResult)} · DoN: ${cell(t.donGw, t.donResult, 'W')}</span>
     </div>`).join('');
   return `<div class="panel"><div class="phead"><h2>Card timing</h2>
       <span class="hint">Which gameweek each card was played, and whether it paid off</span></div>
@@ -2301,12 +2334,12 @@ async function shareCardTimingImage(){
   try{
     const timing = computeCardTiming();
     if(!timing.length){ toast('No cards played yet'); return; }
-    const cell = (gwNum, res) => gwNum===null ? 'unused'
-      : `GW${gwNum} ${res==='D'?'✓':'✗'}`;
+    const cell = (gwNum, res, successResult='D') => gwNum===null ? 'unused'
+      : `GW${gwNum} ${res===successResult?'✓':'✗'}`;
     const rows = timing.map(t=>`
       <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #1c2a44;">
         <span style="font-size:13px;color:#eaf1fb;">${t.name}</span>
-        <span style="font-family:ui-monospace,monospace;font-size:12px;color:#8ea0c0;">WC ${cell(t.wildcardGw,t.wildcardResult)} · DC ${cell(t.drawcardGw,t.drawcardResult)}</span>
+        <span style="font-family:ui-monospace,monospace;font-size:12px;color:#8ea0c0;">WC ${cell(t.wildcardGw,t.wildcardResult)} · DC ${cell(t.drawcardGw,t.drawcardResult)} · DoN ${cell(t.donGw,t.donResult,'W')}</span>
       </div>`).join('');
     const html = `
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
@@ -2533,8 +2566,8 @@ function renderHistory(){
   }
   const mgrs = state.managers.map(m=>m.name);
   const head = `<tr><th>GW</th>${mgrs.map(n=>`<th>${n}</th>`).join('')}</tr>`;
-  const cardBadge = (label, res) => {
-    const cls = !res ? '' : (res==='D' ? 'go' : 'danger');
+  const cardBadge = (label, res, successResult='D') => {
+    const cls = !res ? '' : (res===successResult ? 'go' : 'danger');
     return `<span class="histres ${cls}">${label}</span>`;
   };
   const rows = gws.map(n=>{
@@ -2549,6 +2582,7 @@ function renderHistory(){
       if(p.auto) flagParts.push(`<span class="strength">auto</span>`);
       if(p.wildcard) flagParts.push(cardBadge('WC', resolved ? res : null));
       if(p.drawcard) flagParts.push(cardBadge('DC', resolved ? res : null));
+      if(p.doubleOrNothing) flagParts.push(cardBadge('DoN', resolved ? res : null, 'W'));
       const flagsHtml = flagParts.length ? `<span style="display:block;margin-top:2px">${flagParts.join(' ')}</span>` : '';
       return `<td class="histcell"><span class="histteam">${p.team}</span>${resTag}${flagsHtml}</td>`;
     }).join('');
@@ -2613,7 +2647,17 @@ function renderRules(){
           <tr><td>Game is a <b>win or loss</b></td><td class="num">&minus;1 life</td></tr>
         </table>
         <p>It's used the moment you play it, whatever the result.</p>
-        <p class="note">Wildcard and Drawcard can't both be played on the same pick in the same week.</p>
+
+        <h3>Double or Nothing <span class="rulestag">once per season</span></h3>
+        <p>Play it alongside a pick to raise the stakes on that one result:</p>
+        <table class="grid rulestable">
+          <tr><td>Team <b>wins</b></td><td class="num">+2 lives</td></tr>
+          <tr><td>Team <b>draws</b></td><td class="num">&minus;2 lives</td></tr>
+          <tr><td>Team <b>loses</b></td><td class="num">&minus;4 lives</td></tr>
+        </table>
+        <p>It's used the moment you play it, whatever the result.</p>
+        <p class="note">High risk: the downside is double the upside — a bad result here could end your season outright.</p>
+        <p class="note">Only one card — Wildcard, Drawcard, or Double or Nothing — can be played on a pick in any given week.</p>
 
         <h3>Missed picks</h3>
         <p>If a manager doesn't get a pick in before the deadline, they're not skipped — they're auto-assigned the
@@ -2752,7 +2796,7 @@ function createSeason(label, names){
     season: label, startingLives:15, maxPicksPerTeam:2, currentGw:1,
     teams: PL_2627.map(t=>({...t})),
     managers: names.map(name=>({name, lives:15, wins:0, draws:0, losses:0,
-      eliminated:false, wildcardUsed:false, drawcardUsed:false, used:{}, picks:{}})),
+      eliminated:false, wildcardUsed:false, drawcardUsed:false, doubleOrNothingUsed:false, used:{}, picks:{}})),
     gameweeks:{}
   };
   const id = uniqueId(label);
