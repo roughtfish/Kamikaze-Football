@@ -72,6 +72,10 @@
   .wdl{font-family:var(--num);font-size:12.5px;color:var(--muted);text-align:center}
   .wdl b{color:var(--ink)}
   .lifenum{font-family:var(--num);font-size:16px;font-weight:600;text-align:right}
+  .cardnet{font-family:var(--num);font-size:10.5px;font-weight:700;border-radius:4px;padding:1px 4px;margin-left:4px}
+  .cardnet.up{color:var(--go);background:rgba(25,226,160,.1)}
+  .cardnet.down{color:var(--danger);background:rgba(255,91,126,.1)}
+  .cardnet.flat{color:var(--muted);background:var(--panel-2)}
   .lifenum.go{color:var(--go)} .lifenum.warn{color:var(--warn)} .lifenum.danger{color:var(--danger)}
   .lives{display:flex;align-items:center;gap:8px;justify-content:flex-end}
   .pips{display:flex;gap:2px;flex-wrap:nowrap}
@@ -229,6 +233,7 @@ function renderStats(snap){
     const pips = Array.from({length:startingLives}, (_,i)=>pip(i, L)).join('');
     const teamsLeft = Math.max(0, teamsTotal - (m.bannedCount||0));
     const cardsLeft = (m.wildcardUsed?0:1) + (m.drawcardUsed?0:1) + (m.doubleOrNothingUsed?0:1);
+    const cnHtml = m.cardNetCount ? `<span class="cardnet ${m.cardNet>0?'up':m.cardNet<0?'down':'flat'}" title="Card net: what ${m.name}'s cards have actually earned or cost, vs a normal pick on the same results">${m.cardNet>0?'+':''}${m.cardNet}</span>` : '';
     rowsHtml += `<div class="row mgr ${m.eliminated?'out':''}">
       <span class="rank ${(!m.eliminated && aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
       <span class="who"><span class="nm">${m.name}</span>
@@ -236,7 +241,7 @@ function renderStats(snap){
         <span class="note" style="display:block;font-size:11px;margin-top:2px;">${teamsLeft} teams left · ${cardsLeft} card${cardsLeft===1?'':'s'} left</span>
       </span>
       <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
-      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span></span>
+      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span>${cnHtml}</span>
     </div>`;
   });
   const published = snap.publishedAt ? new Date(snap.publishedAt).toLocaleString('en-GB',
