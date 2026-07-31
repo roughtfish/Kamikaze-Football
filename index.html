@@ -117,6 +117,8 @@
   }
   .cardpip.avail{border-color:var(--go-dim);color:var(--go);background:rgba(25,226,160,.08)}
   .cardpip.used{opacity:.45;text-decoration:line-through}
+  .cardpip.success{border-color:var(--go-dim);color:var(--go);background:rgba(25,226,160,.12);opacity:1}
+  .cardpip.fail{border-color:var(--danger);color:var(--danger);background:rgba(255,91,126,.14);opacity:1;font-weight:800}
   .cardpip:hover{border-color:var(--ink)}
   .lives{display:flex;align-items:center;gap:8px}
   .pips{display:flex;gap:2px;flex-wrap:nowrap}
@@ -1420,9 +1422,14 @@ function renderStandings(){
       const successWord = successResult==='W' ? 'won' : 'drew';
       return `${name}: used — ${result===successResult ? `successful (${successWord})` : 'unsuccessful ('+result+')'}`;
     };
-    const wc = `<span class="cardpip ${m.wildcardUsed?'used':'avail'}" data-card="wild" data-m="${m.name}" title="${cardTitle(m.wildcardUsed, m.wildcardResult, 'Wildcard', 'D')}">W</span>`;
-    const dc = `<span class="cardpip ${m.drawcardUsed?'used':'avail'}" data-card="draw" data-m="${m.name}" title="${cardTitle(m.drawcardUsed, m.drawcardResult, 'Drawcard', 'D')}">D</span>`;
-    const dn = `<span class="cardpip ${m.doubleOrNothingUsed?'used':'avail'}" data-card="don" data-m="${m.name}" title="${cardTitle(m.doubleOrNothingUsed, m.doubleOrNothingResult, 'Double or Nothing', 'W')}">2x</span>`;
+    const cardCls = (usedFlag, result, successResult)=>{
+      if(!usedFlag) return 'avail';
+      if(result===undefined || result===null) return 'used';
+      return result===successResult ? 'success' : 'fail';
+    };
+    const wc = `<span class="cardpip ${cardCls(m.wildcardUsed, m.wildcardResult, 'D')}" data-card="wild" data-m="${m.name}" title="${cardTitle(m.wildcardUsed, m.wildcardResult, 'Wildcard', 'D')}">W</span>`;
+    const dc = `<span class="cardpip ${cardCls(m.drawcardUsed, m.drawcardResult, 'D')}" data-card="draw" data-m="${m.name}" title="${cardTitle(m.drawcardUsed, m.drawcardResult, 'Drawcard', 'D')}">D</span>`;
+    const dn = `<span class="cardpip ${cardCls(m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}" data-card="don" data-m="${m.name}" title="${cardTitle(m.doubleOrNothingUsed, m.doubleOrNothingResult, 'Double or Nothing', 'W')}">2x</span>`;
     html += `<div class="row mgr ${m.eliminated?'out':''}">
       <span class="rank ${(!m.eliminated&&aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
       <span class="who"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}${dn}</span>
