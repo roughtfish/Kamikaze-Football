@@ -127,6 +127,10 @@
   .pip.warn{background:var(--warn)}
   .pip.danger{background:var(--danger)}
   .lifenum{font-family:var(--num);font-size:17px;min-width:26px;text-align:right;font-weight:600}
+  .cardnet{font-family:var(--num);font-size:11px;font-weight:700;border-radius:4px;padding:1px 4px;margin-left:2px}
+  .cardnet.up{color:var(--go);background:rgba(25,226,160,.1)}
+  .cardnet.down{color:var(--danger);background:rgba(255,91,126,.1)}
+  .cardnet.flat{color:var(--muted);background:var(--panel-2)}
   .lifenum.warn{color:var(--warn)} .lifenum.danger{color:var(--danger)} .lifenum.go{color:var(--go)}
   .wdl{font-family:var(--num);font-size:13px;color:var(--muted);letter-spacing:.02em;text-align:center}
   .wdl b{color:var(--ink)}
@@ -736,12 +740,38 @@ function pickedTeamValue(name){
   return {total, count};
 }
 
+// what a normal (no card) pick would have yielded for a given result
+function baselineDelta(result){
+  if(result==='W') return 0;
+  if(result==='D') return -1;
+  return -2;   // 'L'
+}
+// "Card net": for every resolved gameweek where this manager played a card,
+// the actual life change minus what a normal pick would have yielded for that
+// same result — i.e. what the card actually earned or cost them, not just the
+// raw outcome. Summed across the season. {net, count} — count is how many
+// card plays are resolved so far, so a manager with none can be hidden.
+function computeCardNet(name){
+  let net=0, count=0;
+  Object.values(state.gameweeks||{}).forEach(g=>{
+    if(g.status!=='resolved' || !g.applied) return;
+    const a = g.applied[name];
+    if(!a || !a.result) return;
+    if(a.wildcard || a.drawcard || a.doubleOrNothing){
+      net += a.delta - baselineDelta(a.result);
+      count++;
+    }
+  });
+  return {net, count};
+}
+
 // builds a clean, curated snapshot (no admin/internal fields) and pushes it
 // to the public-readable path — players read this, never the real season data
 async function publishPublicStats(){
   if(!fbRef) throw new Error("Not connected to Firebase — can't publish without it");
   const rows = sortedStandings().map((m,i)=>{
     const ptv = pickedTeamValue(m.name);
+    const cn = computeCardNet(m.name);
     return {
       name: m.name,
       lives: m.lives,
@@ -751,7 +781,8 @@ async function publishPublicStats(){
       drawcardUsed: !!m.drawcardUsed, drawcardResult: m.drawcardResult || null,
       doubleOrNothingUsed: !!m.doubleOrNothingUsed, doubleOrNothingResult: m.doubleOrNothingResult || null,
       bannedCount: state.teams.filter(t=>isBanned(m,t.name)).length,
-      pickedTeamValue: ptv.total, pickedTeamValueCount: ptv.count
+      pickedTeamValue: ptv.total, pickedTeamValueCount: ptv.count,
+      cardNet: cn.net, cardNetCount: cn.count
     };
   });
   const managerOrder = rows.map(r=>r.name);
@@ -1292,12 +1323,18 @@ async function shareStandingsImage(){
       const L = m.lives;
       const liveColor = lifeSeverity(L)==='danger' ? '#ff5b7e' : lifeSeverity(L)==='warn' ? '#ffc043' : '#19e2a0';
       const nameStyle = m.eliminated ? 'color:#5e7095;text-decoration:line-through;' : 'color:#eaf1fb;';
+      const cn = computeCardNet(m.name);
+      const cnColor = cn.net>0 ? '#19e2a0' : cn.net<0 ? '#ff5b7e' : '#8ea0c0';
+      const cnHtml = cn.count ? `<span style="font-family:ui-monospace,monospace;font-size:10px;font-weight:700;color:${cnColor};background:rgba(255,255,255,.05);border-radius:4px;padding:1px 4px;margin-left:4px;">${cn.net>0?'+':''}${cn.net}</span>` : '';
       rowsHtml += `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #1c2a44;">
         <span style="width:22px;font-family:Barlow,sans-serif;font-weight:700;font-size:15px;color:${m.eliminated?'#5e7095':'#8ea0c0'};text-align:center;flex-shrink:0;">${m.eliminated?'–':aliveRank}</span>
         <span style="flex:1;font-size:14px;${nameStyle}">${m.name}</span>
         <span style="display:flex;gap:3px;flex-shrink:0;">${cardBadge('WC', m.wildcardUsed, m.wildcardResult)}${cardBadge('DC', m.drawcardUsed, m.drawcardResult)}${cardBadge('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}</span>
         <span style="font-family:ui-monospace,monospace;font-size:12.5px;color:#8ea0c0;width:52px;text-align:center;flex-shrink:0;">${m.wins}·${m.draws}·${m.losses}</span>
-        <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:${liveColor};width:22px;text-align:right;flex-shrink:0;">${L}</span>
+        <span style="display:flex;align-items:center;flex-shrink:0;">
+          <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:${liveColor};width:22px;text-align:right;">${L}</span>
+          ${cnHtml}
+        </span>
       </div>`;
     });
     const html = `
@@ -1440,12 +1477,14 @@ function renderStandings(){
     const wc = `<span class="cardpip ${cardCls(m.wildcardUsed, m.wildcardResult, 'D')}" data-card="wild" data-m="${m.name}" title="${cardTitle(m.wildcardUsed, m.wildcardResult, 'Wildcard', 'D')}">W</span>`;
     const dc = `<span class="cardpip ${cardCls(m.drawcardUsed, m.drawcardResult, 'D')}" data-card="draw" data-m="${m.name}" title="${cardTitle(m.drawcardUsed, m.drawcardResult, 'Drawcard', 'D')}">D</span>`;
     const dn = `<span class="cardpip ${cardCls(m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}" data-card="don" data-m="${m.name}" title="${cardTitle(m.doubleOrNothingUsed, m.doubleOrNothingResult, 'Double or Nothing', 'W')}">2x</span>`;
+    const cardNet = computeCardNet(m.name);
+    const cardNetHtml = cardNet.count ? `<span class="cardnet ${cardNet.net>0?'up':cardNet.net<0?'down':'flat'}" title="Card net: what ${m.name}'s cards have actually earned or cost, vs a normal pick on the same results">${cardNet.net>0?'+':''}${cardNet.net}</span>` : '';
     html += `<div class="row mgr ${m.eliminated?'out':''}">
       <span class="rank ${(!m.eliminated&&aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
       <span class="who"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}${dn}</span>
         <button class="shareMgr" data-m="${m.name}" title="Share ${m.name}'s remaining teams &amp; cards">⇪</button>
         ${m.eliminated?'<span class="outtag">Out</span>':''}</span>
-      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span></span>
+      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span>${cardNetHtml}</span>
       <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
       <span class="bans">${bans}/20</span>
     </div>`;
