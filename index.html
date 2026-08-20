@@ -1596,12 +1596,12 @@ function renderPicks(){
     const p = (g.picks && g.picks[m.name]) || {};
     const opts = availableTeams(m).sort((a,b)=>a.name.localeCompare(b.name)).map(t=>{
       const rem = state.maxPicksPerTeam - used(m,t.name);
-      const sel = p.team===t.name ? 'selected':'';
+      const sel = (p.team===t.name && !p.auto) ? 'selected':'';
       return `<option value="${t.name}" ${sel}>${t.name} · ${rem} left</option>`;
     }).join('');
-    const autoT = autoPickTeam(m,g);
+    const autoT = (p.auto && p.team) ? p.team : autoPickTeam(m,g);
     const autoLabel = autoT ? `Auto: ${autoT}` : `Auto (add fixtures first)`;
-    const auto = p.team===undefined && p.auto ? 'selected':'';
+    const auto = !!p.auto ? 'selected':'';
     const noneSel = (p.team===undefined && !p.auto) ? 'selected':'';
     html += `<div class="pickrow" data-m="${m.name}">
       <span class="nm">${m.name}</span>
