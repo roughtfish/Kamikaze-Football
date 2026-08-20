@@ -830,7 +830,12 @@ async function publishPublicStats(){
     } : null,
     publishedAt: new Date().toISOString()
   };
-  await firebase.database().ref(`${PUBLIC_PATH}/current`).set(snapshot);
+  await firebase.database().ref(`${PUBLIC_PATH}/seasons/${activeId}`).set(snapshot);
+  // bootstrap the public pointer on first-ever publish so existing installs keep
+  // working — after this, only createSeason() is allowed to move it deliberately
+  const pointerRef = firebase.database().ref(`${PUBLIC_PATH}/activeSeasonId`);
+  const pointerSnap = await pointerRef.get();
+  if(!pointerSnap.exists()) await pointerRef.set(activeId);
 }
 
 /* ---------- 3b. FOOTBALL-DATA.ORG (via Cloudflare Worker proxy) --------- */
@@ -2862,6 +2867,9 @@ function createSeason(label, names){
   if(fbRef){
     firebase.database().ref(`${DB_PATH}/seasons/${id}`).set(fresh).catch(e=>console.warn(e));
     firebase.database().ref(`${DB_PATH}/active`).set(id).catch(()=>{});
+    // starting a season is the one deliberate action that should make it the
+    // one players see — loading/viewing an old season never does this
+    firebase.database().ref(`${PUBLIC_PATH}/activeSeasonId`).set(id).catch(()=>{});
   }
   hideChooser(); setTab('standings'); toast(`${label} season started`);
   autoPublishStats();
