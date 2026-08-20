@@ -588,6 +588,21 @@ function autoPickTeam(m,g){
   return null;
 }
 // fill in a team for every alive manager with no selection
+// pure preview of what materializeAutos WOULD assign, without writing anything
+// back — Resolve needs to see who'll be auto-assigned (to show their team's
+// result row), but merely viewing the screen should never silently mark
+// someone as "entered" on Enter Picks. Only applyGameweek's own
+// materializeAutos call actually commits auto-assignments for real.
+function previewMaterializedPicks(g){
+  const preview = {...(g.picks||{})};
+  aliveManagers().forEach(m=>{
+    const p = preview[m.name];
+    if(p && p.team) return;
+    const auto = autoPickTeam(m,g);
+    if(auto) preview[m.name] = {team:auto, auto:true, wildcard:(p&&p.wildcard)||false, drawcard:(p&&p.drawcard)||false, doubleOrNothing:(p&&p.doubleOrNothing)||false};
+  });
+  return preview;
+}
 function materializeAutos(g){
   g.picks = g.picks || {};
   aliveManagers().forEach(m=>{
@@ -1804,10 +1819,11 @@ function renderResolve(){
       if(events.length){ g.fixtures = events.map(e=>({home:e.home, away:e.away, homeCrest:e.homeCrest||null, awayCrest:e.awayCrest||null, kickoff:e.kickoff||null})); cacheTeamCrests(events); save(); }
     }).catch(()=>{});
   }
-  // fill any missing picks with the first available away team
-  materializeAutos(g);
+  // preview who'll be auto-assigned, without actually committing anything —
+  // that only happens for real once "Apply" is clicked
+  const previewPicks = previewMaterializedPicks(g);
   const picked = new Set();
-  Object.values(g.picks||{}).forEach(p=>{ if(p.team) picked.add(p.team); });
+  Object.values(previewPicks).forEach(p=>{ if(p.team) picked.add(p.team); });
   const teamsToRate = state.teams.filter(t=>picked.has(t.name))
       .sort((a,b)=>b.strength-a.strength);
 
@@ -1830,7 +1846,7 @@ function renderResolve(){
   g.results = g.results || {};
   teamsToRate.forEach(t=>{
     const r = g.results[t.name] || '';
-    const pickers = Object.entries(g.picks||{})
+    const pickers = Object.entries(previewPicks)
       .filter(([,p])=>p.team===t.name)
       .map(([name,p])=>{
         const flags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':'', p.doubleOrNothing?'DoN':''].filter(Boolean).join(' ');
@@ -1848,7 +1864,7 @@ function renderResolve(){
   });
 
   // alive managers still without a team (no pick + nothing left to auto-assign)
-  const noTeam = aliveManagers().filter(m=>{ const p=g.picks[m.name]; return !(p&&p.team); }).map(m=>m.name);
+  const noTeam = aliveManagers().filter(m=>{ const p=previewPicks[m.name]; return !(p&&p.team); }).map(m=>m.name);
   html += `<div style="padding:12px 16px">`;
   if(noTeam.length){
     html += `<div class="warnbox">No team for ${noTeam.join(', ')} — no pick was entered and the fixture list
@@ -1864,7 +1880,7 @@ function renderResolve(){
     </div></div>`;
 
   // live preview of what applying will do
-  html += renderPreview(g);
+  html += renderPreview(g, previewPicks);
   view.innerHTML = html;
 
   view.querySelectorAll('.fixrow .seg button').forEach(b=>{
@@ -1925,7 +1941,7 @@ function effect(p, result){
                                      : {delta:-1, outcome:'D', note:''};
   return {delta:-2, outcome:'L', note:''};
 }
-function renderPreview(g){
+function renderPreview(g, picksSource){
   const flagBadge = (label, kind)=>{
     const color = kind==='auto' ? 'var(--muted)' : kind==='wild' ? 'var(--go)' : kind==='draw' ? 'var(--warn)' : 'var(--danger)';
     const border = kind==='auto' ? 'var(--line)' : kind==='wild' ? 'var(--go-dim)' : kind==='draw' ? 'var(--warn)' : 'var(--danger)';
@@ -1933,7 +1949,7 @@ function renderPreview(g){
       letter-spacing:.04em;color:${color};border:1px solid ${border};border-radius:4px;
       padding:1px 5px;margin-left:6px;vertical-align:middle;">${label}</span>`;
   };
-  const rows = Object.entries(g.picks||{}).filter(([,p])=>p.team).map(([name,p])=>{
+  const rows = Object.entries(picksSource || g.picks || {}).filter(([,p])=>p.team).map(([name,p])=>{
     const m = state.managers.find(x=>x.name===name);
     const badges = (p.auto?flagBadge('AUTO','auto'):'') + (p.wildcard?flagBadge('WC','wild'):'') + (p.drawcard?flagBadge('DC','draw'):'') + (p.doubleOrNothing?flagBadge('DoN','don'):'');
     const nameCell = `${name}${badges}`;
