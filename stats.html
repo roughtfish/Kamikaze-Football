@@ -580,9 +580,22 @@ document.getElementById('tabs').addEventListener('click', e=>{
   b.onload=()=>{
     try{
       firebase.initializeApp(firebaseConfig);
-      const ref = firebase.database().ref(`${PUBLIC_PATH}/current`);
-      ref.on('value', snap=>{ render(snap.exists() ? snap.val() : null); },
-        err=>{ view.innerHTML = `<div class="empty"><div class="big">Can't load stats</div><p>${err.message}</p></div>`; });
+      let seasonListenerRef = null, currentSeasonId = null;
+      const pointerRef = firebase.database().ref(`${PUBLIC_PATH}/activeSeasonId`);
+      pointerRef.on('value', pointerSnap=>{
+        const seasonId = pointerSnap.exists() ? pointerSnap.val() : null;
+        if(!seasonId){
+          view.innerHTML = `<div class="empty"><div class="big">No stats published yet</div>
+            <p>Check back once the admin's published the latest standings.</p></div>`;
+          return;
+        }
+        if(seasonId === currentSeasonId) return;   // pointer unchanged — no need to re-subscribe
+        if(seasonListenerRef) seasonListenerRef.off();   // switch away from the old season cleanly
+        currentSeasonId = seasonId;
+        seasonListenerRef = firebase.database().ref(`${PUBLIC_PATH}/seasons/${seasonId}`);
+        seasonListenerRef.on('value', snap=>{ render(snap.exists() ? snap.val() : null); },
+          err=>{ view.innerHTML = `<div class="empty"><div class="big">Can't load stats</div><p>${err.message}</p></div>`; });
+      }, err=>{ view.innerHTML = `<div class="empty"><div class="big">Can't load stats</div><p>${err.message}</p></div>`; });
     }catch(e){
       view.innerHTML = `<div class="empty"><div class="big">Can't load stats</div><p>${e.message}</p></div>`;
     }
