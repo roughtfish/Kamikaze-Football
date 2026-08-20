@@ -1134,10 +1134,10 @@ async function shareGwPicksPie(gwNum, g){
     const pie = drawPieDataUrl(entries, total);
 
     const legend = entries.map((e,i)=>{
-      const color = teamColor(e.team, i);
+      const crest = (state.teamCrests && state.teamCrests[e.team]) || null;
       const names = e.players.map(p=>p.auto ? `${p.name} (auto)` : p.name).join(', ');
-      return `<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid #1c2a44;">
-        <span style="width:11px;height:11px;border-radius:50%;background:${color};margin-top:3px;flex-shrink:0;"></span>
+      return `<div style="display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid #1c2a44;">
+        <span style="flex-shrink:0;margin-top:1px;">${crestBadge(e.team, crest)}</span>
         <span style="flex:1;font-size:13px;">
           <span style="color:#eaf1fb;font-weight:600;">${e.team}</span>
           <span style="color:#8ea0c0;"> · ${e.count} pick${e.count===1?'':'s'}</span><br>
