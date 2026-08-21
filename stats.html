@@ -529,6 +529,12 @@ function renderHistoryPage(){
     return `<span class="histres ${cls}">${label}</span>`;
   };
   const rows = history.map(g=>{
+    if(g.locked === false){
+      return `<tr><td class="num"><b>${g.gw}</b> <span class="note">open</span></td>
+        <td colspan="${mgrs.length}" class="histcell" style="text-align:center;color:var(--faint);padding:10px 0;">
+          🔒 Picks not yet revealed
+        </td></tr>`;
+    }
     const cells = mgrs.map(name=>{
       const p = g.picks && g.picks[name];
       if(!p || !p.team) return `<td class="histcell"><span class="note">—</span></td>`;
