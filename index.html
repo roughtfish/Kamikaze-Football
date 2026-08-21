@@ -113,7 +113,7 @@
   .cards{display:flex;gap:4px}
   .cardpip{
     font-family:var(--disp);font-size:10px;font-weight:700;min-width:17px;height:17px;border-radius:4px;
-    display:inline-flex;align-items:center;justify-content:center;padding:0 3px;cursor:pointer;border:1px solid var(--line);color:var(--faint);user-select:none
+    display:inline-flex;align-items:center;justify-content:center;padding:0 3px;cursor:default;border:1px solid var(--line);color:var(--faint);user-select:none
   }
   .cardpip.avail{border-color:var(--go-dim);color:var(--go);background:rgba(25,226,160,.08)}
   .cardpip.used{opacity:.45;text-decoration:line-through}
@@ -1523,7 +1523,7 @@ function renderStandings(){
   }
   html += `<div class="panel"><div class="phead">
       <h2>Standings</h2>
-      <span class="hint">Tap a W / D chip to flip a manager's card status</span>
+      <span class="hint">Card status is set via Resolve → Edit a pick or result</span>
     </div><div class="board">
     <div class="row head"><span>#</span><span>Manager</span><span>Lives</span><span class="h-wdl">W·D·L</span><span class="h-bans">Banned</span></div>`;
   let firstDead = true;
@@ -1588,25 +1588,6 @@ function renderStandings(){
     el.onclick = ()=>{
       const m = state.managers.find(x=>x.name===el.dataset.m);
       shareManagerCard(m);
-    };
-  });
-  view.querySelectorAll('.cardpip').forEach(el=>{
-    el.onclick = ()=>{
-      const m = state.managers.find(x=>x.name===el.dataset.m);
-      const CARD_MAP = {
-        wild: {key:'wildcardUsed', resultKey:'wildcardResult', name:'Wildcard'},
-        draw: {key:'drawcardUsed', resultKey:'drawcardResult', name:'Drawcard'},
-        don:  {key:'doubleOrNothingUsed', resultKey:'doubleOrNothingResult', name:'Double or Nothing'}
-      };
-      const c = CARD_MAP[el.dataset.card];
-      if(!c) return;
-      const nowUsed = !m[c.key];
-      const verb = nowUsed ? 'mark as used' : 'mark as available';
-      if(!confirm(`${verb.charAt(0).toUpperCase()+verb.slice(1)}: ${m.name}'s ${c.name}?`)) return;
-      m[c.key] = nowUsed;
-      if(!nowUsed) m[c.resultKey] = null;   // manually un-using it clears any recorded outcome
-      save();
-      autoPublishStats();
     };
   });
 }
