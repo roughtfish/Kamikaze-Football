@@ -613,6 +613,32 @@ function materializeAutos(g){
   });
 }
 let viewGw = null;   // which gameweek you're currently looking at — may differ from state.currentGw
+// tracks the last publish attempt across both auto-publish and the manual
+// button, so a small always-visible indicator can show if it's ever silently
+// failed, rather than only logging quietly to the console
+let lastPublishAt = null;      // Date of the last attempt (success or fail)
+let lastPublishOk = null;      // true / false / null (null = never attempted this session)
+let lastPublishErrMsg = null;
+function recordPublishResult(ok, errMsg){
+  lastPublishAt = new Date();
+  lastPublishOk = ok;
+  lastPublishErrMsg = ok ? null : (errMsg || 'Unknown error');
+  updatePublishIndicator();
+}
+function publishIndicatorHtml(){
+  if(!lastPublishAt) return '<span class="note">Not published yet this session</span>';
+  const mins = Math.max(0, Math.round((Date.now()-lastPublishAt.getTime())/60000));
+  const when = mins<1 ? 'just now' : mins===1 ? '1 min ago' : `${mins} min ago`;
+  if(lastPublishOk===false){
+    return `<span class="note" style="color:var(--danger)">⚠ Publish failed ${when} — ${lastPublishErrMsg}. Try Publish again.</span>`;
+  }
+  return `<span class="note" style="color:var(--go)">✓ Published ${when}</span>`;
+}
+function updatePublishIndicator(){
+  const el = document.getElementById('publishStatusIndicator');
+  if(el) el.innerHTML = publishIndicatorHtml();
+}
+setInterval(updatePublishIndicator, 30000);   // keeps "X min ago" fresh without needing a re-render
 const savedAtByGw = {};   // last successful picks-save time per gameweek, this session only
 function gw(){ return viewGw != null ? viewGw : state.currentGw; }
 function isViewingCurrentGw(){ return gw() === state.currentGw; }
@@ -1564,7 +1590,8 @@ function renderStandings(){
     <div class="toolbar"><button class="btn ghost" id="shareStandings">Share standings image</button>
       <button class="btn ghost" id="publishStats">Publish to player stats page</button>
       <a href="stats.html" target="_blank" class="btn ghost" style="text-decoration:none">↗ Open stats page</a>
-      <span class="note" id="standingsShareNote"></span></div></div>`;
+      <span class="note" id="standingsShareNote"></span></div>
+    <div class="toolbar"><span id="publishStatusIndicator">${publishIndicatorHtml()}</span></div></div>`;
   view.innerHTML = html;
   const shareWinnerBtn = document.getElementById('shareWinner');
   if(shareWinnerBtn){
@@ -1581,8 +1608,14 @@ function renderStandings(){
   };
   document.getElementById('publishStats').onclick = async ()=>{
     const note=document.getElementById('standingsShareNote'); note.textContent='Publishing…';
-    try{ await publishPublicStats(); note.textContent='Published — players can now see this on the stats page.'; }
-    catch(e){ note.textContent='Publish failed: '+e.message; }
+    try{
+      await publishPublicStats();
+      note.textContent='Published — players can now see this on the stats page.';
+      recordPublishResult(true);
+    }catch(e){
+      note.textContent='Publish failed: '+e.message;
+      recordPublishResult(false, e.message||String(e));
+    }
   };
   view.querySelectorAll('.shareMgr').forEach(el=>{
     el.onclick = ()=>{
@@ -2084,7 +2117,9 @@ function applyGameweek(n){
 // fire-and-forget publish, used after actions that change what players see —
 // failures don't interrupt the admin action, just surface quietly via console
 function autoPublishStats(){
-  publishPublicStats().catch(e=>console.warn('auto-publish failed:', e));
+  publishPublicStats()
+    .then(()=>recordPublishResult(true))
+    .catch(e=>{ console.warn('auto-publish failed:', e); recordPublishResult(false, e.message||String(e)); });
 }
 function undoGameweek(n){
   const g = gwObj(n);
