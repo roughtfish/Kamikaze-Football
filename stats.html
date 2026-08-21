@@ -69,6 +69,25 @@
   .cpip.ok{border-color:var(--go-dim);color:var(--go);background:rgba(25,226,160,.08)}
   .cpip.bad{border-color:var(--danger);color:var(--danger);background:rgba(255,91,126,.08)}
   .cpip.used{border-color:var(--line);color:var(--muted);background:var(--panel-2)}
+  .mgrModal{position:fixed;inset:0;z-index:70;display:flex;align-items:flex-end;justify-content:center;
+    background:rgba(4,7,14,.75);backdrop-filter:blur(3px)}
+  .mgrModalCard{width:100%;max-width:480px;max-height:82vh;overflow-y:auto;background:var(--panel);
+    border:1px solid var(--line);border-radius:16px 16px 0 0;padding:18px 18px 24px;box-shadow:var(--shadow)}
+  @media (min-width:560px){
+    .mgrModal{align-items:center}
+    .mgrModalCard{border-radius:16px}
+  }
+  .mgrModalHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px}
+  .mgrModalName{font-family:var(--disp);font-weight:700;font-size:20px;letter-spacing:.01em}
+  .mgrModalClose{background:var(--panel-2);border:1px solid var(--line);color:var(--muted);border-radius:8px;
+    width:30px;height:30px;flex-shrink:0;cursor:pointer;font-size:14px}
+  .mgrModalCards{display:flex;gap:6px;flex-wrap:wrap;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid var(--line-soft)}
+  .mgrModalPicks{display:flex;flex-direction:column;gap:2px}
+  .mdpick{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft)}
+  .mdgw{font-family:var(--disp);font-weight:700;font-size:12.5px;color:var(--faint);width:44px;flex-shrink:0}
+  .mdteam{flex:1;font-size:14px;color:var(--ink)}
+  .outtag{font-family:var(--disp);font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--danger);
+    border:1px solid var(--danger);border-radius:4px;padding:1px 5px;text-transform:uppercase;vertical-align:middle}
   .wdl{font-family:var(--num);font-size:12.5px;color:var(--muted);text-align:center}
   .wdl b{color:var(--ink)}
   .lifenum{font-family:var(--num);font-size:16px;font-weight:600;text-align:right}
@@ -234,7 +253,7 @@ function renderStats(snap){
     const teamsLeft = Math.max(0, teamsTotal - (m.bannedCount||0));
     const cardsLeft = (m.wildcardUsed?0:1) + (m.drawcardUsed?0:1) + (m.doubleOrNothingUsed?0:1);
     const cnHtml = m.cardNetCount ? `<span class="cardnet ${m.cardNet>0?'up':m.cardNet<0?'down':'flat'}" title="Card net: what ${m.name}'s cards have actually earned or cost, vs a normal pick on the same results">${m.cardNet>0?'+':''}${m.cardNet}</span>` : '';
-    rowsHtml += `<div class="row mgr ${m.eliminated?'out':''}">
+    rowsHtml += `<div class="row mgr ${m.eliminated?'out':''}" data-manager="${m.name.replace(/"/g,'&quot;')}" style="cursor:pointer">
       <span class="rank ${(!m.eliminated && aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
       <span class="who"><span class="nm">${m.name}</span>
         <span class="cards">${cardPip('WC', m.wildcardUsed, m.wildcardResult)}${cardPip('DC', m.drawcardUsed, m.drawcardResult)}${cardPip('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}</span>
@@ -446,6 +465,73 @@ function renderStats(snap){
     <p class="footnote" style="margin-top:6px">
       <a href="${window.location.href}" style="color:var(--muted);font-size:12px;" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>alert('Link copied!'))">📋 Copy link to share with players</a>
     </p>`;
+  view.querySelectorAll('.row.mgr[data-manager]').forEach(el=>{
+    el.onclick = ()=>showManagerDetail(el.dataset.manager);
+  });
+}
+
+function showManagerDetail(name){
+  const snap = latestSnap;
+  if(!snap) return;
+  const m = (snap.managers||[]).find(x=>x.name===name);
+  if(!m) return;
+
+  const teamsTotal = snap.teamsCount || 20;
+  const teamsLeft = Math.max(0, teamsTotal - (m.bannedCount||0));
+  const cardStatus = (label, used, result, successResult='D')=>{
+    if(!used) return `<span class="cpip">${label} available</span>`;
+    if(result===undefined || result===null) return `<span class="cpip used">${label} used</span>`;
+    const ok = result===successResult;
+    return `<span class="cpip ${ok?'ok':'bad'}">${label} used ${ok?'✓':'✗'}</span>`;
+  };
+
+  // pull this manager's pick out of every published gameweek, respecting the
+  // same reveal rules as the History tab — an unlocked gameweek just shows
+  // as pending, never the actual team
+  const history = snap.history || [];
+  const pickRows = history.map(g=>{
+    if(g.locked === false){
+      return `<div class="mdpick"><span class="mdgw">GW${g.gw}</span><span class="note">🔒 not yet revealed</span></div>`;
+    }
+    const p = g.picks && g.picks[name];
+    if(!p || !p.team){
+      return `<div class="mdpick"><span class="mdgw">GW${g.gw}</span><span class="note">—</span></div>`;
+    }
+    const resTag = (g.resolved && p.result) ? `<span class="histres ${p.result==='W'?'go':p.result==='L'?'danger':'warn'}">${p.result}</span>` : '';
+    const tags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':'', p.doubleOrNothing?'DoN':''].filter(Boolean).join(' · ');
+    return `<div class="mdpick">
+      <span class="mdgw">GW${g.gw}</span>
+      <span class="mdteam">${p.team}${resTag}</span>
+      ${tags?`<span class="note">${tags}</span>`:''}
+    </div>`;
+  }).reverse();   // most recent gameweek first
+
+  const overlay = document.createElement('div');
+  overlay.className = 'mgrModal';
+  overlay.innerHTML = `
+    <div class="mgrModalCard">
+      <div class="mgrModalHead">
+        <div>
+          <div class="mgrModalName">${m.name}${m.eliminated?' <span class="outtag">Out</span>':''}</div>
+          <div class="note">${m.lives} lives · ${m.wins}·${m.draws}·${m.losses} · ${teamsLeft} teams left</div>
+        </div>
+        <button class="mgrModalClose" aria-label="Close">✕</button>
+      </div>
+      <div class="mgrModalCards">
+        ${cardStatus('WC', m.wildcardUsed, m.wildcardResult)}
+        ${cardStatus('DC', m.drawcardUsed, m.drawcardResult)}
+        ${cardStatus('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}
+        ${m.pickedTeamValueCount ? `<span class="cpip">PTV ${m.pickedTeamValue}</span>` : ''}
+        ${m.cardNetCount ? `<span class="cpip ${m.cardNet>0?'ok':m.cardNet<0?'bad':''}">Card net ${m.cardNet>0?'+':''}${m.cardNet}</span>` : ''}
+      </div>
+      <div class="mgrModalPicks">
+        ${pickRows.length ? pickRows.join('') : '<p class="note">No picks recorded yet.</p>'}
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=>{ document.body.removeChild(overlay); };
+  overlay.querySelector('.mgrModalClose').onclick = close;
+  overlay.onclick = e=>{ if(e.target===overlay) close(); };
 }
 
 function renderRulesPage(){
