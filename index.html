@@ -806,6 +806,12 @@ async function publishPublicStats(){
     .map(n=>{
       const g = state.gameweeks[n];
       const resolved = g.status==='resolved';
+      const locked = !!g.locked || resolved;   // resolving always implies locked
+      if(!locked){
+        // picks exist but haven't been locked yet — publish the row so players
+        // know this gameweek's in progress, without revealing anyone's team
+        return {gw:n, resolved:false, locked:false, picks:{}};
+      }
       const picks = {};
       Object.entries(g.picks||{}).forEach(([name,p])=>{
         if(!p || !p.team) return;
@@ -814,7 +820,7 @@ async function publishPublicStats(){
           result: (resolved && g.results) ? (g.results[p.team] || null) : null
         };
       });
-      return {gw:n, resolved, picks};
+      return {gw:n, resolved, locked:true, picks};
     });
   const winner = getWinner();
   const snapshot = {
@@ -828,12 +834,12 @@ async function publishPublicStats(){
     managerOrder,
     managers: rows,
     history,
-    teamPopularity: computeTeamPopularity(),
+    teamPopularity: computeTeamPopularity(true),
     headToHeadLeaderboard: computeHeadToHeadLeaderboard(),
     autoPickRecord: computeAutoPickRecord(),
     teamPerformance: computeTeamPerformance(),
     seasonExtremes: computeSeasonExtremes(),
-    contrarianCopycat: computeContrarianCopycat(),
+    contrarianCopycat: computeContrarianCopycat(true),
     cardTiming: computeCardTiming(),
     livingDangerously: computeLivesTimeline(),
     formGuide: computeFormGuide(5),
@@ -1474,8 +1480,8 @@ function render(){
   const g = gwObj(gw());
   const st = g ? g.status : 'open';
   document.getElementById('gwState').innerHTML =
-    st==='resolved' ? 'Status · <b>resolved</b>' :
-    st==='locked'   ? 'Status · locked' : 'Status · open';
+    (st==='resolved' ? 'Status · <b>resolved</b>' : 'Status · open') +
+    (g && g.locked ? ' · <span style="color:var(--go)">🔒 picks locked</span>' : '');
   document.getElementById('aliveCount').textContent = aliveManagers().length;
   const notCurrent = document.getElementById('notCurrentChip');
   if(isViewingCurrentGw()){
@@ -1679,10 +1685,18 @@ function renderPicks(){
   });
   const savedAt = savedAtByGw[n];
   const savedNoteText = savedAt ? `✓ Saved at ${savedAt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}` : '';
+  const lockNote = g.locked
+    ? `<span class="note" style="color:var(--go)">🔒 Picks locked — visible on the player stats page</span>`
+    : `<span class="note">🔓 Picks not locked yet — hidden from the player stats page</span>`;
   html += `<div class="toolbar">
       <button class="btn" id="savePicks">Save picks</button>
       <span class="note" id="savedNote" style="color:var(--go)">${savedNoteText}</span>
       <span class="note" id="pickCount"></span>
+      <span class="spacer"></span>
+      <button class="btn ${g.locked?'ghost':'warn'}" id="toggleLock">${g.locked?'Unlock picks':'Lock picks'}</button>
+    </div>
+    <div class="toolbar">
+      ${lockNote}
       <span class="spacer"></span>
       <button class="btn ghost" id="sharePieFromPicks">Share picks chart</button>
       <button class="btn ghost" id="goResolve">Go to resolve ›</button>
@@ -1731,6 +1745,18 @@ function renderPicks(){
   });
   document.getElementById('savePicks').onclick = savePicks;
   document.getElementById('goResolve').onclick = ()=>setTab('resolve');
+  document.getElementById('toggleLock').onclick = ()=>{
+    readPicksFromForm();   // lock in whatever's currently on screen too
+    const willLock = !g.locked;
+    const msg = willLock
+      ? `Lock GW${n}'s picks? Once locked, players will be able to see who picked what on the player stats page.`
+      : `Unlock GW${n}'s picks? They'll be hidden from the player stats page again until you re-lock or resolve.`;
+    if(!confirm(msg)) return;
+    g.locked = willLock;
+    save();
+    toast(willLock ? `GW${n} picks locked` : `GW${n} picks unlocked`);
+    autoPublishStats();
+  };
   document.getElementById('sharePieFromPicks').onclick = ()=>{
     readPicksFromForm();   // include anything typed but not yet saved
     shareGwPicksPie(n, g);
@@ -2066,6 +2092,7 @@ function applyGameweek(n){
     applyForManager(g, m, p, res);
   });
   g.status = 'resolved';
+  g.locked = true;   // resolving obviously reveals picks — deliberately not undone by undoGameweek
   state.currentGw = n + 1;
   viewGw = state.currentGw;
   save();
@@ -2360,9 +2387,10 @@ async function shareExtremesImage(){
 }
 
 // how often each manager goes with the crowd vs strikes out alone, across the season
-function computeContrarianCopycat(){
+function computeContrarianCopycat(onlyResolved){
   const tally = {};
   Object.values(state.gameweeks||{}).forEach(g=>{
+    if(onlyResolved && g.status!=='resolved') return;   // publish-safe mode: no leaking unlocked picks
     const picks = Object.entries(g.picks||{}).filter(([,p])=>p&&p.team);
     if(!picks.length) return;
     const counts = {};
@@ -2618,9 +2646,10 @@ async function shareRivalryImage(){
     toast('Image share failed: '+e.message);
   }
 }
-function computeTeamPopularity(){
+function computeTeamPopularity(onlyResolved){
   const counts = {};
   Object.values(state.gameweeks||{}).forEach(g=>{
+    if(onlyResolved && g.status!=='resolved') return;   // publish-safe mode: no leaking unlocked picks
     Object.values(g.picks||{}).forEach(p=>{
       if(!p || !p.team) return;
       counts[p.team] = (counts[p.team]||0) + 1;
