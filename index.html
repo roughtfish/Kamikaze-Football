@@ -951,6 +951,24 @@ function cacheTeamCrests(events){
     if(e.awayCrest) state.teamCrests[e.away] = e.awayCrest;
   });
 }
+// robust crest lookup — tries the fast cache first, but if that ever comes up
+// empty for a team (stale cache, a naming drift, whatever), falls back to
+// scanning every fixture ever actually stored this season for that team,
+// which is the same data fixtures display already renders correctly from.
+// Backfills the cache when it finds one this way, so future lookups are fast.
+function findTeamCrest(name){
+  if(!name) return null;
+  if(state.teamCrests && state.teamCrests[name]) return state.teamCrests[name];
+  for(const n in (state.gameweeks||{})){
+    const fixtures = state.gameweeks[n].fixtures;
+    if(!fixtures) continue;
+    for(const f of fixtures){
+      if(f.home===name && f.homeCrest){ state.teamCrests = state.teamCrests||{}; state.teamCrests[name]=f.homeCrest; return f.homeCrest; }
+      if(f.away===name && f.awayCrest){ state.teamCrests = state.teamCrests||{}; state.teamCrests[name]=f.awayCrest; return f.awayCrest; }
+    }
+  }
+  return null;
+}
 function crestBadge(name, crestUrl){
   if(crestUrl){
     const proxied = `${FD_PROXY_URL}?crest=${encodeURIComponent(crestUrl)}`;
@@ -1174,7 +1192,7 @@ async function drawPieDataUrl(entries, total, size=200){
     const mid = s.a0 + sweep/2;
     const px = cx + rx*0.6*Math.cos(mid);
     const py = cy + ry*0.6*Math.sin(mid);
-    const crestUrl = (state.teamCrests && state.teamCrests[s.team]) || null;
+    const crestUrl = findTeamCrest(s.team);
     const img = crestUrl ? await loadImageEl(`${FD_PROXY_URL}?crest=${encodeURIComponent(crestUrl)}`) : null;
     ctx.save();
     ctx.beginPath();
@@ -1239,7 +1257,7 @@ async function shareGwPicksPie(gwNum, g){
     const pie = await drawPieDataUrl(entries, total);
 
     const legend = entries.map((e,i)=>{
-      const crest = (state.teamCrests && state.teamCrests[e.team]) || null;
+      const crest = findTeamCrest(e.team);
       const names = e.players.map(p=>{
         const tags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':'', p.doubleOrNothing?'DoN':''].filter(Boolean).join(' · ');
         return tags ? `${p.name} (${tags})` : p.name;
@@ -1384,7 +1402,7 @@ async function shareManagerCard(m){
     };
     const teamRows = available.map(t=>`
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1c2a44;">
-        ${crestBadge(t.name, (state.teamCrests && state.teamCrests[t.name]) || null)}
+        ${crestBadge(t.name, findTeamCrest(t.name))}
         <span style="flex:1;font-size:14px;color:#eaf1fb;margin-left:10px;">${t.name}</span>
         <span style="font-family:ui-monospace,monospace;font-size:12px;color:#8ea0c0;">${t.left} left</span>
       </div>`).join('');
@@ -2359,7 +2377,7 @@ async function shareTeamPerformanceImage(){
     const perf = computeTeamPerformance().filter(t=>t.picks>=2);
     if(!perf.length){ toast('Not enough picks recorded yet'); return; }
     const rows = perf.map((t,i)=>{
-      const crest = (state.teamCrests && state.teamCrests[t.team]) || null;
+      const crest = findTeamCrest(t.team);
       return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #1c2a44;">
         ${crestBadge(t.team, crest)}
         <span style="flex:1;font-size:13px;color:#eaf1fb;">${t.team}</span>
@@ -2779,7 +2797,7 @@ function renderTeamPopularityPanel(){
   if(!totalPicks) return '';
   const maxCount = pop[0].count || 1;
   const rows = pop.map(t=>{
-    const crest = (state.teamCrests && state.teamCrests[t.team]) || null;
+    const crest = findTeamCrest(t.team);
     return `
     <div style="display:flex;align-items:center;gap:10px;padding:6px 0;">
       ${crestBadge(t.team, crest)}
@@ -2802,7 +2820,7 @@ async function shareTeamPopularityImage(){
     if(!totalPicks){ toast('No picks recorded yet'); return; }
     const maxCount = pop[0].count || 1;
     const rows = pop.map((t,i)=>{
-      const crest = (state.teamCrests && state.teamCrests[t.team]) || null;
+      const crest = findTeamCrest(t.team);
       return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;">
         <span style="width:20px;font-family:Barlow,sans-serif;font-weight:700;font-size:13px;color:#5e7095;text-align:center;flex-shrink:0;">${i+1}</span>
         ${crestBadge(t.team, crest)}
