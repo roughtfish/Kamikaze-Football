@@ -1054,7 +1054,18 @@ function darkenHex(hex, factor){
 // draws a tilted, extruded ("hockey puck") 3D pie: a flattened ellipse on top
 // with a darker curved side wall beneath its front half, giving real depth —
 // returns {url, width, height} so the caller can size the <img> to match
-function drawPieDataUrl(entries, total, size=200){
+// loads an image and resolves with it, or null on failure — never rejects,
+// so a single broken crest can't derail the whole chart
+function loadImageEl(url){
+  return new Promise(resolve=>{
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = ()=>resolve(img);
+    img.onerror = ()=>resolve(null);
+    img.src = url;
+  });
+}
+async function drawPieDataUrl(entries, total, size=200){
   const scale = 2;   // sharper on high-DPI phone screens
   const depth = 18;  // wall thickness in CSS pixels
   const rx = size/2 - 2;
@@ -1072,7 +1083,7 @@ function drawPieDataUrl(entries, total, size=200){
   const slices = entries.map((e,i)=>{
     const a0 = cum;
     cum += (e.count/total)*Math.PI*2;
-    return {a0, a1:cum, color: teamColor(e.team,i)};
+    return {a0, a1:cum, color: teamColor(e.team,i), team: e.team};
   });
   // the wall only needs to show on the bottom half of the ellipse (y > cy) —
   // that's the only side actually facing the viewer in a top-down tilt
@@ -1118,6 +1129,37 @@ function drawPieDataUrl(entries, total, size=200){
   ctx.fillStyle = sheen;
   ctx.fill();
 
+  // 4) a crest on each wedge wide enough to hold one legibly — thin slivers
+  //    (lots of teams splitting the picks evenly) fall back to the legend
+  //    below instead, rather than cramming an unreadable badge on
+  const MIN_SWEEP = 25 * Math.PI/180;   // ~25° minimum
+  const badgeR = 11;                     // badge radius, logical px (pre-scale)
+  await Promise.all(slices.map(async s=>{
+    const sweep = s.a1 - s.a0;
+    if(sweep < MIN_SWEEP) return;
+    const mid = s.a0 + sweep/2;
+    const px = cx + rx*0.6*Math.cos(mid);
+    const py = cy + ry*0.6*Math.sin(mid);
+    const crestUrl = (state.teamCrests && state.teamCrests[s.team]) || null;
+    const img = crestUrl ? await loadImageEl(`${FD_PROXY_URL}?crest=${encodeURIComponent(crestUrl)}`) : null;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(px, py, badgeR+2, 0, Math.PI*2);
+    ctx.fillStyle = img ? 'rgba(255,255,255,0.92)' : 'rgba(0,0,0,0.38)';
+    ctx.fill();
+    if(img){
+      ctx.clip();
+      ctx.drawImage(img, px-badgeR, py-badgeR, badgeR*2, badgeR*2);
+    } else {
+      ctx.font = '700 10px Barlow, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(teamCode(s.team), px, py+1);
+    }
+    ctx.restore();
+  }));
+
   return {url: canvas.toDataURL('image/png'), width: size, height};
 }
 async function shareGwPicksPie(gwNum, g){
@@ -1131,7 +1173,7 @@ async function shareGwPicksPie(gwNum, g){
       .sort((a,b)=>b.count-a.count);
     if(!entries.length){ toast('No picks to chart yet'); return; }
     const total = entries.reduce((s,e)=>s+e.count,0);
-    const pie = drawPieDataUrl(entries, total);
+    const pie = await drawPieDataUrl(entries, total);
 
     const legend = entries.map((e,i)=>{
       const crest = (state.teamCrests && state.teamCrests[e.team]) || null;
