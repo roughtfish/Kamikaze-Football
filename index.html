@@ -1194,6 +1194,35 @@ async function drawPieDataUrl(entries, total, size=200){
 
   return {url: canvas.toDataURL('image/png'), width: size, height};
 }
+async function shareStillToPickImage(gwNum, g){
+  try{
+    const alive = aliveManagers();
+    const missing = alive.filter(m=>!g.picks || !g.picks[m.name]);
+    const html = missing.length ? `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
+        <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
+      </div>
+      <div style="font-size:13px;color:#8ea0c0;margin-bottom:4px;">Gameweek ${gwNum} · still need picks</div>
+      <div style="font-family:ui-monospace,monospace;font-size:12px;color:#ffc043;margin-bottom:16px;">${missing.length} of ${alive.length} still to pick</div>
+      <div>${missing.map(m=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1c2a44;">
+          <span style="width:8px;height:8px;border-radius:50%;background:#ff5b7e;flex-shrink:0;"></span>
+          <span style="font-size:14px;color:#eaf1fb;">${m.name}</span>
+        </div>`).join('')}
+      </div>` : `
+      <div style="text-align:center;padding:20px 0;">
+        <div style="font-size:13px;color:#8ea0c0;margin-bottom:2px;">Kamikaze Football · ${state.season||''}</div>
+        <div style="font-size:32px;margin:14px 0 8px;">✅</div>
+        <div style="font-family:Barlow,sans-serif;font-weight:700;font-size:18px;color:#eaf1fb;">All picks are in!</div>
+        <div style="font-size:13px;color:#8ea0c0;margin-top:4px;">Gameweek ${gwNum} · ${alive.length}/${alive.length}</div>
+      </div>`;
+    await exportCardAsShare(html, `kamikaze-gw${gwNum}-still-to-pick.png`, `Gameweek ${gwNum} still to pick`);
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
+}
 async function shareGwPicksPie(gwNum, g){
   try{
     const byTeam = {};
@@ -1712,6 +1741,7 @@ function renderPicks(){
     <div class="toolbar">
       ${lockNote}
       <span class="spacer"></span>
+      <button class="btn ghost" id="shareStillToPick">Share still to pick</button>
       <button class="btn ghost" id="sharePieFromPicks">Share picks chart</button>
       <button class="btn ghost" id="goResolve">Go to resolve ›</button>
     </div></div>`;
@@ -1774,6 +1804,10 @@ function renderPicks(){
   document.getElementById('sharePieFromPicks').onclick = ()=>{
     readPicksFromForm();   // include anything typed but not yet saved
     shareGwPicksPie(n, g);
+  };
+  document.getElementById('shareStillToPick').onclick = ()=>{
+    readPicksFromForm();
+    shareStillToPickImage(n, g);
   };
   view.querySelectorAll('.shareH2H').forEach(b=>{
     b.onclick = ()=>{ readPicksFromForm(); shareHeadToHeadImage(n, g); };
