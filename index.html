@@ -1167,7 +1167,7 @@ async function shareGwPicksPie(gwNum, g){
     const byTeam = {};
     Object.entries(g.picks||{}).forEach(([name,p])=>{
       if(!p || !p.team) return;
-      (byTeam[p.team] = byTeam[p.team] || []).push({name, auto: !!p.auto});
+      (byTeam[p.team] = byTeam[p.team] || []).push({name, auto: !!p.auto, wildcard: !!p.wildcard, drawcard: !!p.drawcard, doubleOrNothing: !!p.doubleOrNothing});
     });
     const entries = Object.entries(byTeam).map(([team,players])=>({team, players, count:players.length}))
       .sort((a,b)=>b.count-a.count);
@@ -1177,7 +1177,10 @@ async function shareGwPicksPie(gwNum, g){
 
     const legend = entries.map((e,i)=>{
       const crest = (state.teamCrests && state.teamCrests[e.team]) || null;
-      const names = e.players.map(p=>p.auto ? `${p.name} (auto)` : p.name).join(', ');
+      const names = e.players.map(p=>{
+        const tags = [p.auto?'auto':'', p.wildcard?'WC':'', p.drawcard?'DC':'', p.doubleOrNothing?'DoN':''].filter(Boolean).join(' · ');
+        return tags ? `${p.name} (${tags})` : p.name;
+      }).join(', ');
       return `<div style="display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid #1c2a44;">
         <span style="flex-shrink:0;margin-top:1px;">${crestBadge(e.team, crest)}</span>
         <span style="flex:1;font-size:13px;">
