@@ -432,14 +432,26 @@ function renderStats(snap){
   const ext = snap.seasonExtremes;
   let extHtml = '';
   const ordSuffix = n => { const j=n%10,k=n%100; if(j===1&&k!==11)return'st'; if(j===2&&k!==12)return'nd'; if(j===3&&k!==13)return'rd'; return'th'; };
-  if(ext && (ext.biggestUpset || ext.bestSwing)){
+  if(ext && (ext.biggestUpset || ext.biggestHeartbreak || ext.bestSwing)){
     const lines = [];
     if(ext.biggestUpset) lines.push(`<b>Biggest upset:</b> ${ext.biggestUpset.manager} backed ${ext.biggestUpset.team} (ranked ${ext.biggestUpset.position}${ordSuffix(ext.biggestUpset.position)} at the time) in GW${ext.biggestUpset.gw} — and won.`);
+    if(ext.biggestHeartbreak) lines.push(`<b>Biggest heartbreak:</b> ${ext.biggestHeartbreak.manager} backed ${ext.biggestHeartbreak.team} (ranked ${ext.biggestHeartbreak.position}${ordSuffix(ext.biggestHeartbreak.position)} at the time) in GW${ext.biggestHeartbreak.gw} — and still lost.`);
     if(ext.bestSwing && ext.bestSwing.delta>0){
       const cardName = ext.bestSwing.delta===2 ? 'Double or Nothing' : 'Drawcard';
       lines.push(`<b>Best single week:</b> ${ext.bestSwing.manager} gained ${ext.bestSwing.delta} life${ext.bestSwing.delta===1?'':'s'} in GW${ext.bestSwing.gw} (${ext.bestSwing.team}, ${cardName} hit).`);
     }
     extHtml = `<div class="panel"><div class="phead"><h2>Season extremes</h2></div>
+      <div style="padding:8px 16px 14px;display:grid;gap:8px;font-size:13.5px;color:var(--muted);">${lines.map(l=>`<div>${l}</div>`).join('')}</div></div>`;
+  }
+
+  // Current streaks
+  const streaksData = snap.streaks;
+  let streaksHtml = '';
+  if(streaksData && (streaksData.bestWin || streaksData.worstLoss)){
+    const lines = [];
+    if(streaksData.bestWin) lines.push(`<b>🔥 Hot streak:</b> ${streaksData.bestWin.name} has won ${streaksData.bestWin.winStreak} gameweeks in a row.`);
+    if(streaksData.worstLoss) lines.push(`<b>🥶 Cold streak:</b> ${streaksData.worstLoss.name} has lost ${streaksData.worstLoss.lossStreak} gameweeks in a row.`);
+    streaksHtml = `<div class="panel"><div class="phead"><h2>Current streaks</h2></div>
       <div style="padding:8px 16px 14px;display:grid;gap:8px;font-size:13.5px;color:var(--muted);">${lines.map(l=>`<div>${l}</div>`).join('')}</div></div>`;
   }
 
@@ -460,6 +472,7 @@ function renderStats(snap){
     ${cardTimingHtml}
     ${livingHtml}
     ${extHtml}
+    ${streaksHtml}
     ${autoPickHtml}
     <p class="footnote">Last updated ${published}</p>
     <p class="footnote" style="margin-top:6px">
