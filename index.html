@@ -971,9 +971,8 @@ function fmtTime(iso){
 async function exportCardAsShare(innerHtml, filename, shareTitle){
   await ensureHtml2Canvas();
   const card = document.createElement('div');
-  card.style.cssText = 'position:fixed;left:0;top:0;width:460px;background:#101a2c;'+
-    'font-family:Barlow,system-ui,sans-serif;padding:24px;border-radius:16px;color:#eaf1fb;'+
-    'opacity:0;pointer-events:none;z-index:-1;';
+  card.style.cssText = 'position:fixed;left:-9999px;top:0;width:460px;background:#101a2c;'+
+    'font-family:Barlow,system-ui,sans-serif;padding:24px;border-radius:16px;color:#eaf1fb;';
   card.innerHTML = innerHtml;
   document.body.appendChild(card);
   // wait for crest images to actually load (or fail) before snapshotting
