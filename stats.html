@@ -204,6 +204,27 @@ const firebaseConfig = {
   measurementId: "G-7TE11W1DBX"
 };
 const PUBLIC_PATH = 'kamikaze_pl_public';   // matches the admin console's PUBLIC_PATH
+const FD_PROXY_URL = 'https://kamikaze-football-proxy.roughtfish.workers.dev/';
+const TEAM_CODES = {
+  'Arsenal':'ARS','Man City':'MCI','Liverpool':'LIV','Man Utd':'MUN','Aston Villa':'AVL',
+  'Chelsea':'CHE','Newcastle':'NEW','Bournemouth':'BOU','Spurs':'TOT','Brighton':'BHA',
+  'Crystal Palace':'CRY','Sunderland':'SUN','Fulham':'FUL','Everton':'EVE','Brentford':'BRE',
+  'Leeds':'LEE','Notts Forest':'NFO','Ipswich':'IPS','Hull City':'HUL','Coventry':'COV',
+  'West Ham':'WHU','Burnley':'BUR','Wolves':'WOL'
+};
+function teamCode(name){
+  if(TEAM_CODES[name]) return TEAM_CODES[name];
+  return String(name||'').replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase() || '?';
+}
+// display-only crest badge — proxied through the same Worker the admin console
+// uses, real crest if one's been cached this season, otherwise team-code initials
+function crestBadge(name, crestUrl){
+  if(crestUrl){
+    const proxied = `${FD_PROXY_URL}?crest=${encodeURIComponent(crestUrl)}`;
+    return `<img src="${proxied}" class="crestimg" style="width:26px;height:26px;object-fit:contain;flex-shrink:0;" alt="${name||''}" loading="lazy">`;
+  }
+  return `<div style="width:26px;height:26px;border-radius:50%;background:var(--panel-2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--muted);flex-shrink:0;">${teamCode(name)}</div>`;
+}
 
 const view = document.getElementById('view');
 
@@ -651,9 +672,11 @@ function renderHistoryPage(){
   }).join('');
   const pop = (snap.teamPopularity || []).filter(t=>t.count>0);
   const maxCount = pop.length ? pop[0].count : 1;
+  const teamCrests = snap.teamCrests || {};
   const popRows = pop.map(t=>`
     <div style="display:flex;align-items:center;gap:10px;padding:6px 0;">
-      <span style="width:110px;font-size:13px;color:var(--ink);flex-shrink:0;">${t.team}</span>
+      ${crestBadge(t.team, teamCrests[t.team] || null)}
+      <span style="width:96px;font-size:13px;color:var(--ink);flex-shrink:0;">${t.team}</span>
       <div style="flex:1;background:var(--panel-2);border-radius:4px;overflow:hidden;height:14px;">
         <div style="width:${t.count/maxCount*100}%;height:100%;background:var(--go);"></div>
       </div>
