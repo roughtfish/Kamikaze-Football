@@ -93,6 +93,7 @@
   .h-wdl{text-align:center}
   .lifenum{font-family:var(--num);font-size:16px;font-weight:600;text-align:right}
   .cardnet{font-family:var(--num);font-size:10.5px;font-weight:700;border-radius:4px;padding:1px 4px;margin-left:4px}
+  .cardnetSlot{display:inline-flex;min-width:38px;justify-content:flex-start}
   .cardnet.up{color:var(--go);background:rgba(25,226,160,.1)}
   .cardnet.down{color:var(--danger);background:rgba(255,91,126,.1)}
   .cardnet.flat{color:var(--muted);background:var(--panel-2)}
@@ -282,7 +283,7 @@ function renderStats(snap){
         <span class="note" style="display:block;font-size:11px;margin-top:2px;">${teamsLeft} teams left · ${cardsLeft} card${cardsLeft===1?'':'s'} left</span>
       </span>
       <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
-      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span>${cnHtml}</span>
+      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span><span class="cardnetSlot">${cnHtml}</span></span>
     </div>`;
   });
   const published = snap.publishedAt ? new Date(snap.publishedAt).toLocaleString('en-GB',
