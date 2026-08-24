@@ -128,6 +128,7 @@
   .pip.danger{background:var(--danger)}
   .lifenum{font-family:var(--num);font-size:17px;min-width:26px;text-align:right;font-weight:600}
   .cardnet{font-family:var(--num);font-size:11px;font-weight:700;border-radius:4px;padding:1px 4px;margin-left:2px}
+  .cardnetSlot{display:inline-flex;min-width:40px;justify-content:flex-start}
   .cardnet.up{color:var(--go);background:rgba(25,226,160,.1)}
   .cardnet.down{color:var(--danger);background:rgba(255,91,126,.1)}
   .cardnet.flat{color:var(--muted);background:var(--panel-2)}
@@ -1630,7 +1631,7 @@ function renderStandings(){
       <span class="who"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}${dn}</span>
         <button class="shareMgr" data-m="${m.name}" title="Share ${m.name}'s remaining teams &amp; cards">⇪</button>
         ${m.eliminated?'<span class="outtag">Out</span>':''}</span>
-      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span>${cardNetHtml}</span>
+      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span><span class="cardnetSlot">${cardNetHtml}</span></span>
       <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
       <span class="bans">${bans}/20</span>
     </div>`;
