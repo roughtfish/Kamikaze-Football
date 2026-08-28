@@ -652,9 +652,9 @@ function gwObj(n, create){
 // managers whose picked teams are playing each other this gameweek — a real
 // head-to-head, not just "picked the same team". Only returns fixtures where
 // at least one manager is on each side.
-function computeHeadToHeads(g){
+function computeHeadToHeads(g, picksSource){
   const pickersByTeam = {};
-  Object.entries(g.picks||{}).forEach(([name,p])=>{
+  Object.entries(picksSource || g.picks || {}).forEach(([name,p])=>{
     if(!p || !p.team) return;
     (pickersByTeam[p.team] = pickersByTeam[p.team] || []).push(name);
   });
@@ -737,8 +737,8 @@ async function shareHeadToHeadLeaderboardImage(){
     toast('Image share failed: '+e.message);
   }
 }
-function renderHeadToHeadPanel(g){
-  const h2h = computeHeadToHeads(g);
+function renderHeadToHeadPanel(g, picksSource){
+  const h2h = computeHeadToHeads(g, picksSource);
   if(!h2h.length) return '';
   const resBadge = r => r ? `<span class="histres ${r==='W'?'go':r==='L'?'danger':'warn'}">${r}</span>` : '';
   const rows = h2h.map(h=>`
@@ -1247,7 +1247,7 @@ async function shareStillToPickImage(gwNum, g){
 async function shareGwPicksPie(gwNum, g){
   try{
     const byTeam = {};
-    Object.entries(g.picks||{}).forEach(([name,p])=>{
+    Object.entries(previewMaterializedPicks(g)).forEach(([name,p])=>{
       if(!p || !p.team) return;
       (byTeam[p.team] = byTeam[p.team] || []).push({name, auto: !!p.auto, wildcard: !!p.wildcard, drawcard: !!p.drawcard, doubleOrNothing: !!p.doubleOrNothing});
     });
@@ -1291,7 +1291,7 @@ async function shareGwPicksPie(gwNum, g){
 }
 async function shareHeadToHeadImage(gwNum, g){
   try{
-    const h2h = computeHeadToHeads(g);
+    const h2h = computeHeadToHeads(g, previewMaterializedPicks(g));
     if(!h2h.length){ toast('No head-to-head match-ups yet'); return; }
     // crest lookups, if the fixtures were fetched with them
     const crestFor = team=>{
@@ -1718,7 +1718,7 @@ function renderPicks(){
       <p class="note">Order matters: a no-show gets the first away team they haven't already used twice.</p>
     </div></details>`;
 
-  html += renderHeadToHeadPanel(g);
+  html += renderHeadToHeadPanel(g, previewMaterializedPicks(g));
 
   html += `<div class="panel"><div class="phead"><h2>Enter picks · GW ${n}</h2>
     <span class="hint">${alive.length} managers in · blanks auto-fill at resolve</span></div>`;
