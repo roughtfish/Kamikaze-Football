@@ -315,11 +315,11 @@ function renderStats(snap){
   if(h2hBoard.length){
     h2hHtml = `<div class="panel">
       <div class="phead"><h2>Head to head leaderboard</h2>
-        <span class="hint">Record when a manager's pick faced another manager's pick</span></div>
+        <span class="hint">Tap a manager to see who they've beaten, drawn, or lost to</span></div>
       <div class="board">
         <div class="row head" style="grid-template-columns:28px 1fr 90px"><span>#</span><span>Manager</span><span class="h-wdl">W·D·L</span></div>
         ${h2hBoard.map((t,i)=>`
-          <div class="row mgr" style="grid-template-columns:28px 1fr 90px">
+          <div class="row mgr" style="grid-template-columns:28px 1fr 90px;cursor:pointer" data-h2h-name="${t.name.replace(/"/g,'&quot;')}">
             <span class="rank ${i===0?'lead':''}">${i+1}</span>
             <span class="who"><span class="nm">${t.name}</span></span>
             <span class="wdl"><b>${t.wins}</b>·${t.draws}·${t.losses}</span>
@@ -503,8 +503,39 @@ function renderStats(snap){
   view.querySelectorAll('.row.mgr[data-manager]').forEach(el=>{
     el.onclick = ()=>showManagerDetail(el.dataset.manager);
   });
+  view.querySelectorAll('.row.mgr[data-h2h-name]').forEach(el=>{
+    el.onclick = ()=>showHeadToHeadDetail(el.dataset.h2hName);
+  });
 }
 
+function showHeadToHeadDetail(name){
+  const board = (latestSnap && latestSnap.headToHeadLeaderboard) || [];
+  const entry = board.find(b=>b.name===name);
+  if(!entry) return;
+  const oppRows = (entry.opponents||[]).map(o=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-soft);">
+      <span style="font-size:14px;">${o.opponent}</span>
+      <span class="wdl"><b>${o.wins}</b>·${o.draws}·${o.losses}</span>
+    </div>`).join('');
+  const overlay = document.createElement('div');
+  overlay.className = 'mgrModal';
+  overlay.innerHTML = `
+    <div class="mgrModalCard">
+      <div class="mgrModalHead">
+        <div>
+          <div class="mgrModalName">${entry.name}</div>
+          <div class="note">${entry.wins}·${entry.draws}·${entry.losses} overall head to head record</div>
+        </div>
+        <button class="mgrModalClose" aria-label="Close">✕</button>
+      </div>
+      <div class="note" style="margin-bottom:10px;">Record against each opponent faced</div>
+      <div>${oppRows}</div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=>document.body.removeChild(overlay);
+  overlay.querySelector('.mgrModalClose').onclick = close;
+  overlay.onclick = e=>{ if(e.target===overlay) close(); };
+}
 function showManagerDetail(name){
   const snap = latestSnap;
   if(!snap) return;
