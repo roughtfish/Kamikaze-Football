@@ -274,12 +274,12 @@ function renderStats(snap){
     const pips = Array.from({length:startingLives}, (_,i)=>pip(i, L)).join('');
     const teamsLeft = Math.max(0, teamsTotal - (m.bannedCount||0));
     const cardsLeft = (m.wildcardUsed?0:1) + (m.drawcardUsed?0:1) + (m.doubleOrNothingUsed?0:1);
-    const cnHtml = m.cardNetCount ? `<span class="cardnet ${m.cardNet>0?'up':m.cardNet<0?'down':'flat'}" title="Card net: what ${m.name}'s cards have earned or cost across the WHOLE SEASON so far — not this gameweek's result">net ${m.cardNet>0?'+':''}${m.cardNet}</span>` : '';
+    const cnHtml = m.cardNetCount ? ` · <span class="cardnet ${m.cardNet>0?'up':m.cardNet<0?'down':'flat'}" title="Card net: what ${m.name}'s cards have earned or cost across the WHOLE SEASON so far — not this gameweek's result">net ${m.cardNet>0?'+':''}${m.cardNet}</span>` : '';
     rowsHtml += `<div class="row mgr ${m.eliminated?'out':''}" data-manager="${m.name.replace(/"/g,'&quot;')}" style="cursor:pointer">
       <span class="rank ${(!m.eliminated && aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
       <span class="who"><span class="nm">${m.name}</span>
-        <span class="cards">${cardPip('WC', m.wildcardUsed, m.wildcardResult)}${cardPip('DC', m.drawcardUsed, m.drawcardResult)}${cardPip('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}${cnHtml}</span>
-        <span class="note" style="display:block;font-size:11px;margin-top:2px;">${teamsLeft} teams left · ${cardsLeft} card${cardsLeft===1?'':'s'} left</span>
+        <span class="cards">${cardPip('WC', m.wildcardUsed, m.wildcardResult)}${cardPip('DC', m.drawcardUsed, m.drawcardResult)}${cardPip('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}</span>
+        <span class="note" style="display:block;font-size:11px;margin-top:2px;">${teamsLeft} teams left · ${cardsLeft} card${cardsLeft===1?'':'s'} left${cnHtml}</span>
       </span>
       <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
       <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span></span>
