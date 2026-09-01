@@ -2805,7 +2805,7 @@ function computeRivalries(){
 }
 function renderRivalryPanel(){
   const rivalries = computeRivalries();
-  if(!rivalries.length) return '';
+  if(!rivalries.length || rivalries[0].count < 2) return '';   // one meeting isn't a "rivalry" yet
   const top = rivalries[0];
   return `<div class="panel"><div class="phead"><h2>Biggest rivalry</h2></div>
     <div style="padding:14px 16px;text-align:center;">
@@ -2817,7 +2817,7 @@ function renderRivalryPanel(){
 async function shareRivalryImage(){
   try{
     const rivalries = computeRivalries();
-    if(!rivalries.length){ toast('No head-to-head match-ups recorded yet'); return; }
+    if(!rivalries.length || rivalries[0].count < 2){ toast('No rivalry with 2+ meetings yet'); return; }
     const top = rivalries[0];
     const html = `
       <div style="text-align:center;padding:6px 0;">
