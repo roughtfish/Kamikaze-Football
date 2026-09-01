@@ -378,7 +378,7 @@ function renderStats(snap){
   // Biggest rivalry
   const rivalries = snap.rivalries || [];
   let rivalryHtml = '';
-  if(rivalries.length){
+  if(rivalries.length && rivalries[0].count >= 2){
     const top = rivalries[0];
     rivalryHtml = `<div class="panel"><div class="phead"><h2>Biggest rivalry</h2></div>
       <div style="padding:14px 16px;text-align:center;">
