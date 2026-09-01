@@ -1463,7 +1463,7 @@ async function shareStandingsImage(){
     let aliveRank=0, firstDead=true, rowsHtml='';
     rows.forEach(m=>{
       if(m.eliminated && firstDead){
-        rowsHtml += `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#ff5b7e;padding:14px 0 6px;">Eliminated</div>`;
+        rowsHtml += `<tr><td colspan="5" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#ff5b7e;padding:14px 0 6px;">Eliminated</td></tr>`;
         firstDead=false;
       }
       if(!m.eliminated) aliveRank++;
@@ -1472,17 +1472,16 @@ async function shareStandingsImage(){
       const nameStyle = m.eliminated ? 'color:#5e7095;text-decoration:line-through;' : 'color:#eaf1fb;';
       const cn = computeCardNet(m.name);
       const cnColor = cn.net>0 ? '#19e2a0' : cn.net<0 ? '#ff5b7e' : '#8ea0c0';
-      const cnHtml = cn.count ? `<span style="font-family:ui-monospace,monospace;font-size:10px;font-weight:700;color:${cnColor};background:rgba(255,255,255,.05);border-radius:4px;padding:1px 4px;margin-left:4px;">${cn.net>0?'+':''}${cn.net}</span>` : '';
-      rowsHtml += `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #1c2a44;">
-        <span style="width:22px;font-family:Barlow,sans-serif;font-weight:700;font-size:15px;color:${m.eliminated?'#5e7095':'#8ea0c0'};text-align:center;flex-shrink:0;">${m.eliminated?'–':aliveRank}</span>
-        <span style="flex:1;font-size:14px;${nameStyle}">${m.name}</span>
-        <span style="display:flex;gap:3px;flex-shrink:0;width:110px;">${cardBadge('WC', m.wildcardUsed, m.wildcardResult)}${cardBadge('DC', m.drawcardUsed, m.drawcardResult)}${cardBadge('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}</span>
-        <span style="font-family:ui-monospace,monospace;font-size:12.5px;color:#8ea0c0;width:52px;text-align:center;flex-shrink:0;">${m.wins}·${m.draws}·${m.losses}</span>
-        <span style="display:flex;align-items:center;flex-shrink:0;">
-          <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:${liveColor};width:22px;text-align:right;">${L}</span>
-          ${cnHtml}
-        </span>
-      </div>`;
+      const cnHtml = cn.count ? `<span style="font-family:ui-monospace,monospace;font-size:10px;font-weight:700;color:${cnColor};background:rgba(255,255,255,.05);border-radius:4px;padding:1px 4px;margin-left:4px;white-space:nowrap;">${cn.net>0?'+':''}${cn.net}</span>` : '';
+      rowsHtml += `<tr style="border-top:1px solid #1c2a44;">
+        <td style="padding:9px 0;text-align:center;font-family:Barlow,system-ui,sans-serif;font-weight:700;font-size:15px;color:${m.eliminated?'#5e7095':'#8ea0c0'};">${m.eliminated?'–':aliveRank}</td>
+        <td style="padding:9px 8px 9px 0;font-size:14px;${nameStyle}">${m.name}</td>
+        <td style="padding:9px 8px 9px 0;white-space:nowrap;"><span style="display:inline-flex;gap:3px;">${cardBadge('WC', m.wildcardUsed, m.wildcardResult)}${cardBadge('DC', m.drawcardUsed, m.drawcardResult)}${cardBadge('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}</span></td>
+        <td style="padding:9px 8px;text-align:center;font-family:ui-monospace,monospace;font-size:12.5px;color:#8ea0c0;white-space:nowrap;">${m.wins}·${m.draws}·${m.losses}</td>
+        <td style="padding:9px 0;text-align:right;white-space:nowrap;">
+          <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:${liveColor};">${L}</span>${cnHtml}
+        </td>
+      </tr>`;
     });
     const html = `
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
@@ -1490,12 +1489,18 @@ async function shareStandingsImage(){
         <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
       </div>
       <div style="font-size:13px;color:#8ea0c0;margin-bottom:6px;">Standings · Gameweek ${gw()} · ${aliveManagers().length} alive</div>
-      <div style="display:flex;gap:8px;padding:4px 0 8px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#5e7095;">
-        <span style="width:22px;text-align:center;flex-shrink:0;">#</span><span style="flex:1;">Manager</span>
-        <span style="width:110px;flex-shrink:0;">Cards</span>
-        <span style="width:52px;text-align:center;flex-shrink:0;">W·D·L</span><span style="width:22px;text-align:right;flex-shrink:0;">Lives</span>
-      </div>
-      <div style="border-top:1px solid #1c2a44;">${rowsHtml}</div>
+      <table style="width:100%;border-collapse:collapse;font-family:Barlow,system-ui,sans-serif;">
+        <thead>
+          <tr style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#5e7095;">
+            <th style="padding:4px 0 8px;text-align:center;">#</th>
+            <th style="padding:4px 8px 8px 0;text-align:left;">Manager</th>
+            <th style="padding:4px 8px 8px 0;text-align:left;">Cards</th>
+            <th style="padding:4px 8px 8px;text-align:center;">W·D·L</th>
+            <th style="padding:4px 0 8px;text-align:right;">Lives</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
       <div style="font-size:9.5px;color:#5e7095;margin-top:12px;">WC = Wildcard · DC = Drawcard · DoN = Double or Nothing · ✓ successful · ✗ unsuccessful · grey = used, unrecorded · outline only = not used</div>`;
     await exportCardAsShare(html, `kamikaze-${(state.season||'standings').replace(/\//g,'-')}-gw${gw()}-standings.png`, `${state.season||''} standings`);
   }catch(e){
