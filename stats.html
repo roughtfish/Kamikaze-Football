@@ -54,7 +54,7 @@
   .phead h2{font-family:var(--disp);text-transform:uppercase;letter-spacing:.05em;font-size:16px;margin:0}
   .phead .hint{font-size:12.5px;color:var(--muted);margin-left:auto}
   .board{padding:6px 8px 12px; overflow-x:auto}
-  .row{display:grid;grid-template-columns:28px 1fr 60px 190px;align-items:center;
+  .row{display:grid;grid-template-columns:28px 1fr 60px 125px;align-items:center;
     gap:10px;padding:9px 10px;border-radius:10px}
   .row.head{color:var(--faint);font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;
     font-size:11px;padding-bottom:4px}
@@ -62,8 +62,8 @@
   .rank{font-family:var(--disp);font-weight:700;font-size:17px;color:var(--faint);text-align:center}
   .rank.lead{color:var(--go)}
   .who{display:flex;align-items:center;gap:8px;min-width:0}
-  .who .nm{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .cards{display:flex;gap:3px}
+  .who .nm{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+  .cards{display:flex;gap:3px;flex-shrink:0}
   .cpip{font-family:var(--disp);font-size:9.5px;font-weight:700;border-radius:4px;padding:1px 4px;
     border:1px solid var(--line);color:var(--faint)}
   .cpip.ok{border-color:var(--go-dim);color:var(--go);background:rgba(25,226,160,.08)}
@@ -98,8 +98,8 @@
   .cardnet.flat{color:var(--muted);background:var(--panel-2)}
   .lifenum.go{color:var(--go)} .lifenum.warn{color:var(--warn)} .lifenum.danger{color:var(--danger)}
   .lives{display:flex;align-items:center;gap:8px;justify-content:flex-end}
-  .pips{display:flex;gap:2px;flex-wrap:nowrap}
-  .pip{width:5px;height:14px;border-radius:2px;background:var(--line)}
+  .pips{display:flex;gap:1.5px;flex-wrap:nowrap}
+  .pip{width:4px;height:14px;border-radius:2px;background:var(--line)}
   .pip.on{background:var(--go)} .pip.warn{background:var(--warn)} .pip.danger{background:var(--danger)}
   .row.out{opacity:.5}
   .row.out .nm{text-decoration:line-through}
@@ -143,7 +143,7 @@
   .histres.warn{color:var(--warn);border:1px solid var(--warn)}
   .histres.danger{color:var(--danger);border:1px solid var(--danger)}
   @media (max-width:480px){
-    .row{grid-template-columns:20px 1fr 50px 130px}
+    .row{grid-template-columns:20px 1fr 50px 100px}
     .row .wdl, .row.head .h-wdl{display:none}
     .pip{width:4px;height:13px}
   }
