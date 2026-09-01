@@ -1632,9 +1632,9 @@ function renderStandings(){
     const cardNetHtml = cardNet.count ? `<span class="cardnet ${cardNet.net>0?'up':cardNet.net<0?'down':'flat'}" title="Card net: what ${m.name}'s cards have earned or cost across the WHOLE SEASON so far — not this gameweek's result">net ${cardNet.net>0?'+':''}${cardNet.net}</span>` : '';
     html += `<div class="row mgr ${m.eliminated?'out':''}">
       <span class="rank ${(!m.eliminated&&aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
-      <span class="who"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}${dn}${cardNetHtml}</span>
+      <span class="who" style="flex-wrap:wrap;row-gap:3px;"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}${dn}</span>
         <button class="shareMgr" data-m="${m.name}" title="Share ${m.name}'s remaining teams &amp; cards">⇪</button>
-        ${m.eliminated?'<span class="outtag">Out</span>':''}</span>
+        ${m.eliminated?'<span class="outtag">Out</span>':''}${cardNetHtml?`<span style="flex-basis:100%;">${cardNetHtml}</span>`:''}</span>
       <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span></span>
       <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
       <span class="bans">${bans}/20</span>
