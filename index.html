@@ -1679,6 +1679,17 @@ async function repairHistoricalTableSnapshots(){
       });
     }
   });
+  // sync live/global team strength to match the most recent gameweek just
+  // repaired, so an open gameweek's live number reflects this repair too,
+  // rather than staying stale until someone remembers the separate manual button
+  const latestAfter = computeStandingsFromMatches(allMatches, maxGw+1);
+  if(latestAfter){
+    state.teams.forEach(t=>{
+      const snap = latestAfter.find(x=>x.name===t.name);
+      if(snap) t.strength = snap.position;
+    });
+    state.tableUpdatedAt = new Date().toISOString();
+  }
   save();
   return {fixed, excluded};
 }
@@ -2363,6 +2374,17 @@ async function applyGameweek(n){
             return s + (21-pos)*left;
           }, 0);
         });
+        // also sync the live/global team strength to match — otherwise an open
+        // gameweek's LIVE squad strength number (which reads this directly) could
+        // silently drift from what this gameweek's own frozen snapshot just used,
+        // even with zero new real matches played, simply because nothing else
+        // keeps this in sync except the separate manual "update from live table"
+        // button
+        state.teams.forEach(t=>{
+          const snap = afterStandings.find(x=>x.name===t.name);
+          if(snap) t.strength = snap.position;
+        });
+        state.tableUpdatedAt = new Date().toISOString();
       }
     }catch(e){
       console.warn('squad strength snapshot failed:', e);
