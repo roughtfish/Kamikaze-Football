@@ -670,9 +670,12 @@ function computeHeadToHeads(g, picksSource){
 // is exact even when a manager's pick was on the away side of the fixture
 function computeHeadToHeadLeaderboard(){
   const tally = {};
+  const vs = {};   // name -> { opponentName -> {wins,draws,losses} } — separate from the aggregate below
   Object.values(state.gameweeks||{}).forEach(g=>{
     if(g.status!=='resolved') return;
     computeHeadToHeads(g).forEach(h=>{
+      // aggregate — unchanged from the original: one increment per real match, per side,
+      // regardless of how many pickers are on the opposing side
       h.homePickers.forEach(name=>{
         tally[name] = tally[name] || {wins:0,draws:0,losses:0,played:0};
         tally[name].played++;
@@ -687,23 +690,47 @@ function computeHeadToHeadLeaderboard(){
         else if(h.awayResult==='D') tally[name].draws++;
         else if(h.awayResult==='L') tally[name].losses++;
       });
+      // opponent breakdown — a separate pass, doesn't touch the aggregate above.
+      // this genuinely does need every home×away pairing, since "who did I face"
+      // is a different question from "how many real matches was I in"
+      h.homePickers.forEach(homeName=>{
+        vs[homeName] = vs[homeName] || {};
+        h.awayPickers.forEach(awayName=>{
+          vs[homeName][awayName] = vs[homeName][awayName] || {wins:0,draws:0,losses:0};
+          if(h.homeResult==='W') vs[homeName][awayName].wins++;
+          else if(h.homeResult==='D') vs[homeName][awayName].draws++;
+          else if(h.homeResult==='L') vs[homeName][awayName].losses++;
+        });
+      });
+      h.awayPickers.forEach(awayName=>{
+        vs[awayName] = vs[awayName] || {};
+        h.homePickers.forEach(homeName=>{
+          vs[awayName][homeName] = vs[awayName][homeName] || {wins:0,draws:0,losses:0};
+          if(h.awayResult==='W') vs[awayName][homeName].wins++;
+          else if(h.awayResult==='D') vs[awayName][homeName].draws++;
+          else if(h.awayResult==='L') vs[awayName][homeName].losses++;
+        });
+      });
     });
   });
-  return Object.entries(tally).map(([name,t])=>({name, ...t}))
-    .filter(t=>t.played>0)
+  return Object.entries(tally).map(([name,t])=>({
+    name, ...t,
+    opponents: Object.entries(vs[name]||{}).map(([opponent,r])=>({opponent, ...r}))
+      .sort((a,b)=>(b.wins+b.draws+b.losses)-(a.wins+a.draws+a.losses))
+  })).filter(t=>t.played>0)
     .sort((a,b)=> b.wins-a.wins || b.played-a.played);
 }
 function renderHeadToHeadLeaderboardPanel(){
   const board = computeHeadToHeadLeaderboard();
   if(!board.length) return '';
   const rows = board.map((t,i)=>`
-    <div class="row mgr" style="grid-template-columns:28px 1fr 90px">
+    <div class="row mgr" style="grid-template-columns:28px 1fr 90px;cursor:pointer" data-h2h-name="${t.name.replace(/"/g,'&quot;')}">
       <span class="rank ${i===0?'lead':''}">${i+1}</span>
       <span class="who"><span class="nm">${t.name}</span></span>
       <span class="wdl"><b>${t.wins}</b>·${t.draws}·${t.losses}</span>
     </div>`).join('');
   return `<div class="panel"><div class="phead"><h2>Head to head leaderboard</h2>
-      <span class="hint">Record when a manager's pick faced another manager's pick</span></div>
+      <span class="hint">Tap a manager to see who they've beaten, drawn, or lost to</span></div>
     <div class="board">
       <div class="row head" style="grid-template-columns:28px 1fr 90px"><span>#</span><span>Manager</span><span class="h-wdl">W·D·L</span></div>
       ${rows}
@@ -1002,6 +1029,34 @@ async function exportCardAsShare(innerHtml, filename, shareTitle){
   const blob = await new Promise(res=>canvas.toBlob(res,'image/png'));
   const file = new File([blob], filename, {type:'image/png'});
   await showSharePreview(blob, file, shareTitle);
+}
+function showHeadToHeadDetail(name){
+  const board = computeHeadToHeadLeaderboard();
+  const entry = board.find(b=>b.name===name);
+  if(!entry) return;
+  const oppRows = entry.opponents.map(o=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-soft);">
+      <span style="font-size:14px;">${o.opponent}</span>
+      <span class="wdl"><b>${o.wins}</b>·${o.draws}·${o.losses}</span>
+    </div>`).join('');
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;'+
+    'padding:20px;background:rgba(4,7,14,.92);backdrop-filter:blur(4px);';
+  overlay.innerHTML = `
+    <div style="width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);
+      border-radius:16px;padding:18px;box-shadow:var(--shadow);max-height:80vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+        <div style="font-family:var(--disp);font-weight:700;font-size:18px;">${entry.name}</div>
+        <div class="wdl"><b>${entry.wins}</b>·${entry.draws}·${entry.losses} overall</div>
+      </div>
+      <div class="note" style="margin-bottom:12px;">Head to head record against each opponent faced</div>
+      <div>${oppRows}</div>
+      <button class="btn ghost" id="h2hDetailClose" style="width:100%;margin-top:14px;">Close</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=>document.body.removeChild(overlay);
+  overlay.querySelector('#h2hDetailClose').onclick = close;
+  overlay.onclick = e=>{ if(e.target===overlay) close(); };
 }
 function showSharePreview(blob, file, shareTitle){
   return new Promise(resolve=>{
@@ -2902,6 +2957,9 @@ function renderHistory(){
     ${renderSeasonExtremesPanel()}
     ${renderAutoPickPanel()}`;
   view.querySelectorAll('.shareH2HBoard').forEach(b=>{ b.onclick = ()=>shareHeadToHeadLeaderboardImage(); });
+  view.querySelectorAll('[data-h2h-name]').forEach(el=>{
+    el.onclick = ()=>showHeadToHeadDetail(el.dataset.h2hName);
+  });
   view.querySelectorAll('.shareTeamPop').forEach(b=>{ b.onclick = ()=>shareTeamPopularityImage(); });
   view.querySelectorAll('.shareAutoPick').forEach(b=>{ b.onclick = ()=>shareAutoPickImage(); });
   view.querySelectorAll('.shareTeamPerf').forEach(b=>{ b.onclick = ()=>shareTeamPerformanceImage(); });
