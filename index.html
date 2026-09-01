@@ -1593,9 +1593,18 @@ async function fetchSeasonMatchesUpTo(upToMatchday){
 // practical to replicate here, so this is a close approximation of the exact
 // official tiebreak in the rare case it'd matter, not a perfect reproduction.
 function computeStandingsFromMatches(matches, uptoMatchday){
+  // strictly BEFORE this gameweek's own matchday — a pick was made before that
+  // gameweek's results were known, so its own matches must never count toward
+  // the table used to score it
+  const relevant = matches.filter(m=>m.matchday<uptoMatchday);
+  if(!relevant.length){
+    // nothing's been played yet at this point in the season (gameweek 1) —
+    // there's no real form to measure, so fall back to preseason order
+    return state.teams.map((t,i)=>({name:t.name, points:0, gf:0, ga:0, gd:0, position:i+1}));
+  }
   const table = {};
   state.teams.forEach(t=>{ table[t.name] = {name:t.name, points:0, gf:0, ga:0}; });
-  matches.filter(m=>m.matchday<=uptoMatchday).forEach(m=>{
+  relevant.forEach(m=>{
     const h = table[m.home], a = table[m.away];
     if(!h || !a) return;   // team name mismatch — skip rather than crash the whole replay
     h.gf += m.homeScore; h.ga += m.awayScore;
