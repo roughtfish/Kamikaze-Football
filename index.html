@@ -669,30 +669,10 @@ function computeHeadToHeads(g, picksSource){
 // W/D/L record — each side's own known result decides their own outcome, so this
 // is exact even when a manager's pick was on the away side of the fixture
 function computeHeadToHeadLeaderboard(){
-  const tally = {};
-  const vs = {};   // name -> { opponentName -> {wins,draws,losses} } — separate from the aggregate below
+  const vs = {};   // name -> { opponentName -> {wins,draws,losses} } — the one source of truth
   Object.values(state.gameweeks||{}).forEach(g=>{
     if(g.status!=='resolved') return;
     computeHeadToHeads(g).forEach(h=>{
-      // aggregate — unchanged from the original: one increment per real match, per side,
-      // regardless of how many pickers are on the opposing side
-      h.homePickers.forEach(name=>{
-        tally[name] = tally[name] || {wins:0,draws:0,losses:0,played:0};
-        tally[name].played++;
-        if(h.homeResult==='W') tally[name].wins++;
-        else if(h.homeResult==='D') tally[name].draws++;
-        else if(h.homeResult==='L') tally[name].losses++;
-      });
-      h.awayPickers.forEach(name=>{
-        tally[name] = tally[name] || {wins:0,draws:0,losses:0,played:0};
-        tally[name].played++;
-        if(h.awayResult==='W') tally[name].wins++;
-        else if(h.awayResult==='D') tally[name].draws++;
-        else if(h.awayResult==='L') tally[name].losses++;
-      });
-      // opponent breakdown — a separate pass, doesn't touch the aggregate above.
-      // this genuinely does need every home×away pairing, since "who did I face"
-      // is a different question from "how many real matches was I in"
       h.homePickers.forEach(homeName=>{
         vs[homeName] = vs[homeName] || {};
         h.awayPickers.forEach(awayName=>{
@@ -713,11 +693,16 @@ function computeHeadToHeadLeaderboard(){
       });
     });
   });
-  return Object.entries(tally).map(([name,t])=>({
-    name, ...t,
-    opponents: Object.entries(vs[name]||{}).map(([opponent,r])=>({opponent, ...r}))
-      .sort((a,b)=>(b.wins+b.draws+b.losses)-(a.wins+a.draws+a.losses))
-  })).filter(t=>t.played>0)
+  return Object.entries(vs).map(([name,byOpp])=>{
+    const opponents = Object.entries(byOpp).map(([opponent,r])=>({opponent, ...r}))
+      .sort((a,b)=>(b.wins+b.draws+b.losses)-(a.wins+a.draws+a.losses));
+    // the summary line is just the sum of the breakdown below it — the two can
+    // never disagree, unlike a separately-tracked "per real match" tally would
+    const wins = opponents.reduce((s,o)=>s+o.wins,0);
+    const draws = opponents.reduce((s,o)=>s+o.draws,0);
+    const losses = opponents.reduce((s,o)=>s+o.losses,0);
+    return {name, wins, draws, losses, played: wins+draws+losses, opponents};
+  }).filter(t=>t.played>0)
     .sort((a,b)=> b.wins-a.wins || b.played-a.played);
 }
 function renderHeadToHeadLeaderboardPanel(){
