@@ -1476,7 +1476,7 @@ async function shareStandingsImage(){
       rowsHtml += `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #1c2a44;">
         <span style="width:22px;font-family:Barlow,sans-serif;font-weight:700;font-size:15px;color:${m.eliminated?'#5e7095':'#8ea0c0'};text-align:center;flex-shrink:0;">${m.eliminated?'–':aliveRank}</span>
         <span style="flex:1;font-size:14px;${nameStyle}">${m.name}</span>
-        <span style="display:flex;gap:3px;flex-shrink:0;">${cardBadge('WC', m.wildcardUsed, m.wildcardResult)}${cardBadge('DC', m.drawcardUsed, m.drawcardResult)}${cardBadge('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}</span>
+        <span style="display:flex;gap:3px;flex-shrink:0;width:110px;">${cardBadge('WC', m.wildcardUsed, m.wildcardResult)}${cardBadge('DC', m.drawcardUsed, m.drawcardResult)}${cardBadge('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}</span>
         <span style="font-family:ui-monospace,monospace;font-size:12.5px;color:#8ea0c0;width:52px;text-align:center;flex-shrink:0;">${m.wins}·${m.draws}·${m.losses}</span>
         <span style="display:flex;align-items:center;flex-shrink:0;">
           <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:${liveColor};width:22px;text-align:right;">${L}</span>
@@ -1492,7 +1492,7 @@ async function shareStandingsImage(){
       <div style="font-size:13px;color:#8ea0c0;margin-bottom:6px;">Standings · Gameweek ${gw()} · ${aliveManagers().length} alive</div>
       <div style="display:flex;gap:8px;padding:4px 0 8px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#5e7095;">
         <span style="width:22px;text-align:center;flex-shrink:0;">#</span><span style="flex:1;">Manager</span>
-        <span style="width:84px;flex-shrink:0;">Cards</span>
+        <span style="width:110px;flex-shrink:0;">Cards</span>
         <span style="width:52px;text-align:center;flex-shrink:0;">W·D·L</span><span style="width:22px;text-align:right;flex-shrink:0;">Lives</span>
       </div>
       <div style="border-top:1px solid #1c2a44;">${rowsHtml}</div>
