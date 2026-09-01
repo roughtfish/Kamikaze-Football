@@ -128,7 +128,6 @@
   .pip.danger{background:var(--danger)}
   .lifenum{font-family:var(--num);font-size:17px;min-width:26px;text-align:right;font-weight:600}
   .cardnet{font-family:var(--num);font-size:11px;font-weight:700;border-radius:4px;padding:1px 4px;margin-left:2px}
-  .cardnetSlot{display:inline-flex;min-width:40px;justify-content:flex-start}
   .cardnet.up{color:var(--go);background:rgba(25,226,160,.1)}
   .cardnet.down{color:var(--danger);background:rgba(255,91,126,.1)}
   .cardnet.flat{color:var(--muted);background:var(--panel-2)}
@@ -1472,14 +1471,14 @@ async function shareStandingsImage(){
       const nameStyle = m.eliminated ? 'color:#5e7095;text-decoration:line-through;' : 'color:#eaf1fb;';
       const cn = computeCardNet(m.name);
       const cnColor = cn.net>0 ? '#19e2a0' : cn.net<0 ? '#ff5b7e' : '#8ea0c0';
-      const cnHtml = cn.count ? `<span style="font-family:ui-monospace,monospace;font-size:10px;font-weight:700;color:${cnColor};background:rgba(255,255,255,.05);border-radius:4px;padding:1px 4px;margin-left:4px;white-space:nowrap;">${cn.net>0?'+':''}${cn.net}</span>` : '';
+      const cnHtml = cn.count ? `<span style="font-family:ui-monospace,monospace;font-size:10px;font-weight:700;color:${cnColor};background:rgba(255,255,255,.05);border-radius:4px;padding:1px 4px;margin-left:4px;white-space:nowrap;">net ${cn.net>0?'+':''}${cn.net}</span>` : '';
       rowsHtml += `<tr style="border-top:1px solid #1c2a44;">
         <td style="padding:9px 0;text-align:center;font-family:Barlow,system-ui,sans-serif;font-weight:700;font-size:15px;color:${m.eliminated?'#5e7095':'#8ea0c0'};">${m.eliminated?'–':aliveRank}</td>
         <td style="padding:9px 8px 9px 0;font-size:14px;${nameStyle}">${m.name}</td>
-        <td style="padding:9px 8px 9px 0;white-space:nowrap;"><span style="display:inline-flex;gap:3px;">${cardBadge('WC', m.wildcardUsed, m.wildcardResult)}${cardBadge('DC', m.drawcardUsed, m.drawcardResult)}${cardBadge('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}</span></td>
+        <td style="padding:9px 8px 9px 0;white-space:nowrap;"><span style="display:inline-flex;align-items:center;gap:3px;">${cardBadge('WC', m.wildcardUsed, m.wildcardResult)}${cardBadge('DC', m.drawcardUsed, m.drawcardResult)}${cardBadge('DoN', m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}${cnHtml}</span></td>
         <td style="padding:9px 8px;text-align:center;font-family:ui-monospace,monospace;font-size:12.5px;color:#8ea0c0;white-space:nowrap;">${m.wins}·${m.draws}·${m.losses}</td>
         <td style="padding:9px 0;text-align:right;white-space:nowrap;">
-          <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:${liveColor};">${L}</span>${cnHtml}
+          <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:${liveColor};">${L}</span>
         </td>
       </tr>`;
     });
@@ -1501,7 +1500,7 @@ async function shareStandingsImage(){
         </thead>
         <tbody>${rowsHtml}</tbody>
       </table>
-      <div style="font-size:9.5px;color:#5e7095;margin-top:12px;">WC = Wildcard · DC = Drawcard · DoN = Double or Nothing · ✓ successful · ✗ unsuccessful · grey = used, unrecorded · outline only = not used</div>`;
+      <div style="font-size:9.5px;color:#5e7095;margin-top:12px;">WC = Wildcard · DC = Drawcard · DoN = Double or Nothing · ✓ successful · ✗ unsuccessful · grey = used, unrecorded · outline only = not used · "net" = cards' total impact this season, not this gameweek</div>`;
     await exportCardAsShare(html, `kamikaze-${(state.season||'standings').replace(/\//g,'-')}-gw${gw()}-standings.png`, `${state.season||''} standings`);
   }catch(e){
     if(e && e.name === 'AbortError') return;
@@ -1630,13 +1629,13 @@ function renderStandings(){
     const dc = `<span class="cardpip ${cardCls(m.drawcardUsed, m.drawcardResult, 'D')}" data-card="draw" data-m="${m.name}" title="${cardTitle(m.drawcardUsed, m.drawcardResult, 'Drawcard', 'D')}">D</span>`;
     const dn = `<span class="cardpip ${cardCls(m.doubleOrNothingUsed, m.doubleOrNothingResult, 'W')}" data-card="don" data-m="${m.name}" title="${cardTitle(m.doubleOrNothingUsed, m.doubleOrNothingResult, 'Double or Nothing', 'W')}">2x</span>`;
     const cardNet = computeCardNet(m.name);
-    const cardNetHtml = cardNet.count ? `<span class="cardnet ${cardNet.net>0?'up':cardNet.net<0?'down':'flat'}" title="Card net: what ${m.name}'s cards have actually earned or cost, vs a normal pick on the same results">${cardNet.net>0?'+':''}${cardNet.net}</span>` : '';
+    const cardNetHtml = cardNet.count ? `<span class="cardnet ${cardNet.net>0?'up':cardNet.net<0?'down':'flat'}" title="Card net: what ${m.name}'s cards have earned or cost across the WHOLE SEASON so far — not this gameweek's result">net ${cardNet.net>0?'+':''}${cardNet.net}</span>` : '';
     html += `<div class="row mgr ${m.eliminated?'out':''}">
       <span class="rank ${(!m.eliminated&&aliveRank===1)?'lead':''}">${m.eliminated?'–':aliveRank}</span>
-      <span class="who"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}${dn}</span>
+      <span class="who"><span class="nm">${m.name}</span><span class="cards">${wc}${dc}${dn}${cardNetHtml}</span>
         <button class="shareMgr" data-m="${m.name}" title="Share ${m.name}'s remaining teams &amp; cards">⇪</button>
         ${m.eliminated?'<span class="outtag">Out</span>':''}</span>
-      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span><span class="cardnetSlot">${cardNetHtml}</span></span>
+      <span class="lives"><span class="pips">${pips}</span><span class="lifenum ${lifeCls}">${L}</span></span>
       <span class="wdl"><b>${m.wins}</b>·${m.draws}·${m.losses}</span>
       <span class="bans">${bans}/20</span>
     </div>`;
