@@ -1597,11 +1597,7 @@ function computeStandingsFromMatches(matches, uptoMatchday){
   // gameweek's results were known, so its own matches must never count toward
   // the table used to score it
   const relevant = matches.filter(m=>m.matchday<uptoMatchday);
-  if(!relevant.length){
-    // nothing's been played yet at this point in the season (gameweek 1) —
-    // there's no real form to measure, so fall back to preseason order
-    return state.teams.map((t,i)=>({name:t.name, points:0, gf:0, ga:0, gd:0, position:i+1}));
-  }
+  if(!relevant.length) return null;   // nothing's been played yet (gameweek 1) — no real table exists to score against
   const table = {};
   state.teams.forEach(t=>{ table[t.name] = {name:t.name, points:0, gf:0, ga:0}; });
   relevant.forEach(m=>{
@@ -1624,18 +1620,25 @@ function computeStandingsFromMatches(matches, uptoMatchday){
 async function repairHistoricalTableSnapshots(){
   const resolvedGws = Object.keys(state.gameweeks||{}).map(Number)
     .filter(n=>state.gameweeks[n].status==='resolved').sort((a,b)=>a-b);
-  if(!resolvedGws.length) return {fixed:0};
+  if(!resolvedGws.length) return {fixed:0, excluded:0};
   const maxGw = Math.max(...resolvedGws);
   const allMatches = await fetchSeasonMatchesUpTo(maxGw);
+  let fixed=0, excluded=0;
   resolvedGws.forEach(n=>{
     const standings = computeStandingsFromMatches(allMatches, n);
+    if(!standings){
+      delete state.gameweeks[n].tableSnapshot;   // no real table to score against — don't fabricate one
+      excluded++;
+      return;
+    }
     state.gameweeks[n].tableSnapshot = state.teams.map(t=>{
       const s = standings.find(x=>x.name===t.name);
       return {name:t.name, strength: s ? s.position : t.strength};
     });
+    fixed++;
   });
   save();
-  return {fixed: resolvedGws.length};
+  return {fixed, excluded};
 }
 // returns {events:[{home,away,homeScore,awayScore,finished}], unmatched:Number} or throws
 async function tsdbFetchRound(roundNum){
@@ -2275,10 +2278,15 @@ async function applyGameweek(n){
     try{
       const matches = await fetchSeasonMatchesUpTo(n);
       const standings = computeStandingsFromMatches(matches, n);
-      g.tableSnapshot = state.teams.map(t=>{
-        const s = standings.find(x=>x.name===t.name);
-        return {name:t.name, strength: s ? s.position : t.strength};
-      });
+      if(standings){
+        g.tableSnapshot = state.teams.map(t=>{
+          const s = standings.find(x=>x.name===t.name);
+          return {name:t.name, strength: s ? s.position : t.strength};
+        });
+      }
+      // standings is null when nothing's been played yet (gameweek 1) — leave
+      // tableSnapshot unset entirely rather than fabricate one; picks that
+      // gameweek simply won't count toward Picked Team Value, correctly
     }catch(e){
       console.warn('table auto-fetch failed, using existing strength values:', e);
       g.tableSnapshot = state.teams.map(t=>({name:t.name, strength:t.strength}));
@@ -2410,8 +2418,11 @@ function renderLimits(){
     const btn = document.getElementById('repairSnapshots');
     btn.disabled = true; const prevText = btn.textContent; btn.textContent = 'Repairing…';
     try{
-      const {fixed} = await repairHistoricalTableSnapshots();
-      toast(fixed ? `Repaired ${fixed} gameweek${fixed===1?'':'s'}` : 'No resolved gameweeks to repair');
+      const {fixed, excluded} = await repairHistoricalTableSnapshots();
+      const parts = [];
+      if(fixed) parts.push(`repaired ${fixed} gameweek${fixed===1?'':'s'}`);
+      if(excluded) parts.push(`excluded ${excluded} with no prior table yet (e.g. GW1)`);
+      toast(parts.length ? parts.join(', ') : 'No resolved gameweeks to repair');
       autoPublishStats();
       setTab('limits');
     }catch(e){
