@@ -1413,24 +1413,30 @@ async function shareLimitsImage(){
 }
 async function shareSquadStrImage(){
   try{
+    const viewedGw = gwObj(gw());
+    const historicalSnap = viewedGw && viewedGw.squadStrengthSnapshot;
+    const squadStrFor = m => historicalSnap ? (historicalSnap[m.name] ?? remainingStrengthSum(m)) : remainingStrengthSum(m);
     const rows = [...state.managers]
-      .sort((a,b)=>remainingStrengthSum(b)-remainingStrengthSum(a))
+      .sort((a,b)=>squadStrFor(b)-squadStrFor(a))
       .map((m,i)=>{
         const nameStyle = m.eliminated ? 'color:#5e7095;text-decoration:line-through;' : 'color:#eaf1fb;';
         return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1c2a44;">
           <span style="width:22px;font-family:Barlow,sans-serif;font-weight:700;font-size:15px;color:#8ea0c0;text-align:center;flex-shrink:0;">${i+1}</span>
           <span style="flex:1;font-size:14px;${nameStyle}">${m.name}</span>
-          <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:#19e2a0;">${remainingStrengthSum(m)}</span>
+          <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:#19e2a0;">${Math.round(squadStrFor(m))}</span>
         </div>`;
       }).join('');
+    const subtitle = historicalSnap
+      ? `Squad value · as it stood after Gameweek ${gw()}`
+      : `Squad value · right now`;
     const html = `
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
         <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
         <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
       </div>
-      <div style="font-size:13px;color:#8ea0c0;margin-bottom:12px;">Squad value · Gameweek ${gw()}</div>
+      <div style="font-size:13px;color:#8ea0c0;margin-bottom:12px;">${subtitle}</div>
       <div>${rows}</div>
-      <div style="font-size:10.5px;color:#5e7095;margin-top:12px;">Sum of each remaining team's value (21 minus live league position) — highest means the strongest teams still in reserve.</div>`;
+      <div style="font-size:10.5px;color:#5e7095;margin-top:12px;">Sum of each remaining team's value (21 minus league position at the relevant point) — highest means the strongest teams still in reserve.</div>`;
     await exportCardAsShare(html, `kamikaze-${(state.season||'season').replace(/\//g,'-')}-squad-value.png`, `${state.season||''} squad value`);
   }catch(e){
     if(e && e.name === 'AbortError') return;
@@ -1622,6 +1628,20 @@ function computeStandingsFromMatches(matches, uptoMatchday){
 // re-scores every already-resolved gameweek's table snapshot using the actual
 // table position that gameweek's matchday genuinely held at the time — computed
 // by replaying every real result up to that point, not an approximation.
+// reconstructs how many times a manager had used each team, counting only
+// picks from resolved gameweeks 1 through uptoGw — needed when retroactively
+// repairing, since a manager's live .used totals reflect the WHOLE season by
+// the time a repair runs, not a specific past point in it
+function usedThroughGameweek(name, uptoGw){
+  const used = {};
+  Object.keys(state.gameweeks||{}).map(Number).filter(n=>n<=uptoGw).sort((a,b)=>a-b).forEach(n=>{
+    const g = state.gameweeks[n];
+    if(g.status!=='resolved') return;
+    const p = g.picks && g.picks[name];
+    if(p && p.team) used[p.team] = (used[p.team]||0)+1;
+  });
+  return used;
+}
 async function repairHistoricalTableSnapshots(){
   const resolvedGws = Object.keys(state.gameweeks||{}).map(Number)
     .filter(n=>state.gameweeks[n].status==='resolved').sort((a,b)=>a-b);
@@ -1641,6 +1661,23 @@ async function repairHistoricalTableSnapshots(){
       return {name:t.name, strength: s ? s.position : t.strength};
     });
     fixed++;
+    // also backfill Squad Strength as it stood right after this gameweek —
+    // includes this gameweek's own result, unlike tableSnapshot above
+    const afterStandings = computeStandingsFromMatches(allMatches, n+1);
+    if(afterStandings){
+      state.gameweeks[n].squadStrengthSnapshot = {};
+      state.managers.forEach(m=>{
+        const usedMap = usedThroughGameweek(m.name, n);
+        state.gameweeks[n].squadStrengthSnapshot[m.name] = state.teams.reduce((s,t)=>{
+          const usedCount = usedMap[t.name] || 0;
+          if(usedCount >= state.maxPicksPerTeam) return s;
+          const left = state.maxPicksPerTeam - usedCount;
+          const snap = afterStandings.find(x=>x.name===t.name);
+          const pos = snap ? snap.position : 10.5;
+          return s + (21-pos)*left;
+        }, 0);
+      });
+    }
   });
   save();
   return {fixed, excluded};
@@ -2279,9 +2316,10 @@ async function applyGameweek(n){
   // accurate even if there's a delay between the matches being played and being
   // resolved here — if the fetch fails, fall back to whatever's already on file
   // rather than blocking the whole apply action over a network hiccup
+  let matches = null;
   if(!g.tableSnapshot){
     try{
-      const matches = await fetchSeasonMatchesUpTo(n);
+      matches = await fetchSeasonMatchesUpTo(n);
       const standings = computeStandingsFromMatches(matches, n);
       if(standings){
         g.tableSnapshot = state.teams.map(t=>{
@@ -2305,6 +2343,31 @@ async function applyGameweek(n){
     if(g.applied[name]) return;   // already applied — avoid double-counting on a re-run
     applyForManager(g, m, p, res);
   });
+  // capture each manager's Squad Strength as it stood right after THIS gameweek's
+  // picks were resolved — unlike tableSnapshot (which deliberately excludes this
+  // gameweek's own result, for fair PTV judgement), this one includes it, since
+  // it's answering "how's my situation now" rather than "was that pick wise"
+  if(!g.squadStrengthSnapshot){
+    try{
+      if(!matches) matches = await fetchSeasonMatchesUpTo(n);
+      const afterStandings = computeStandingsFromMatches(matches, n+1);   // "< n+1" = through this matchday
+      if(afterStandings){
+        g.squadStrengthSnapshot = {};
+        state.managers.forEach(m=>{
+          g.squadStrengthSnapshot[m.name] = state.teams.reduce((s,t)=>{
+            const usedCount = (m.used && m.used[t.name]) || 0;
+            if(usedCount >= state.maxPicksPerTeam) return s;   // banned by this point
+            const left = state.maxPicksPerTeam - usedCount;
+            const snap = afterStandings.find(x=>x.name===t.name);
+            const pos = snap ? snap.position : 10.5;
+            return s + (21-pos)*left;
+          }, 0);
+        });
+      }
+    }catch(e){
+      console.warn('squad strength snapshot failed:', e);
+    }
+  }
   g.status = 'resolved';
   g.locked = true;   // resolving obviously reveals picks — deliberately not undone by undoGameweek
   state.currentGw = n + 1;
@@ -2369,6 +2432,12 @@ function editManagerPick(n, managerName, newTeam, newResult, newWildcard, newDra
 function renderLimits(){
   const updated = state.tableUpdatedAt ? new Date(state.tableUpdatedAt).toLocaleString('en-GB',
     {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
+  const viewedGw = gwObj(gw());
+  const historicalSnap = viewedGw && viewedGw.squadStrengthSnapshot;
+  const squadStrFor = m => historicalSnap ? (historicalSnap[m.name] ?? remainingStrengthSum(m)) : remainingStrengthSum(m);
+  const squadStrLabel = historicalSnap
+    ? `Squad strength as it stood right after Gameweek ${gw()}`
+    : `Squad strength right now — Gameweek ${gw()} doesn't have a historical snapshot yet`;
   let html = `<div class="panel"><div class="phead"><h2>Pick limits</h2>
     <span class="hint">Each team usable ${state.maxPicksPerTeam}× · then banned for that manager</span></div>
     <div class="toolbar" style="border-top:0">
@@ -2376,6 +2445,7 @@ function renderLimits(){
       <button class="btn ghost" id="repairSnapshots">🔧 Repair past gameweeks</button>
       <span class="note" id="tableFetchNote">${updated ? `Table positions as of ${updated}` : 'Not pulled yet — using placeholder order'}</span>
     </div>
+    <div class="toolbar" style="border-top:0"><span class="note">${squadStrLabel}</span></div>
     <div style="overflow-x:auto"><table class="grid"><thead><tr><th>Manager</th><th class="num">Bans</th><th>Banned teams (used ${state.maxPicksPerTeam}×)</th><th class="num">Squad str</th></tr></thead><tbody>`;
   sortedStandings().forEach(m=>{
     const banned = state.teams.filter(t=>isBanned(m,t.name)).map(t=>t.name);
@@ -2383,7 +2453,7 @@ function renderLimits(){
       <td>${m.name}</td>
       <td class="num">${banned.length}</td>
       <td class="banlist">${banned.length?banned.join(', '):'<span class="strength">none</span>'}</td>
-      <td class="num">${remainingStrengthSum(m)}</td></tr>`;
+      <td class="num">${Math.round(squadStrFor(m))}</td></tr>`;
   });
   html += `</tbody></table></div>
     <div class="toolbar">
@@ -2391,7 +2461,7 @@ function renderLimits(){
       <button class="btn ghost" id="shareSquadStr">Share squad value</button>
       <span class="note" id="limitsShareNote"></span>
     </div>
-    <div class="toolbar"><span class="note">"Squad str" = sum of each remaining team's value (21 minus its live league position, so 1st place = 20) — counted once per remaining pick, so a team you can still use twice counts twice. Highest wins the final tiebreak: it means they've still got the strongest teams genuinely in reserve. Same scale as "Picked team value" on the player stats page.</span></div></div>`;
+    <div class="toolbar"><span class="note">"Squad str" = sum of each remaining team's value (21 minus its league position at the relevant point, so 1st place = 20) — counted once per remaining pick, so a team you can still use twice counts twice. Highest wins the final tiebreak: it means they've still got the strongest teams genuinely in reserve. Same scale as "Picked team value" on the player stats page.</span></div></div>`;
   view.innerHTML = html;
   document.getElementById('shareLimits').onclick = async ()=>{
     const note=document.getElementById('limitsShareNote'); note.textContent='Building image…';
