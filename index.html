@@ -576,9 +576,14 @@ function remainingStrengthSum(m){
   // same scale as Picked Team Value: 21 minus league position, so Arsenal (pos 1) = 20.
   // each remaining pick on a team adds its value — so a team you can still use twice
   // counts twice. Higher total = stronger squad still in reserve.
+  // a team with no valid strength yet (e.g. never appeared in a fetched fixture)
+  // falls back to the league average (10.5) rather than corrupting the whole sum
+  // with NaN — every manager draws from the same shared pool, so this stays fair
+  // across all of them rather than favouring whoever hasn't used that team yet
   return state.teams.filter(t=>!isBanned(m,t.name)).reduce((s,t)=>{
     const left = state.maxPicksPerTeam - used(m,t.name);   // >=1, since banned teams are filtered out
-    return s + (21 - t.strength)*left;
+    const validStrength = (typeof t.strength === 'number' && !isNaN(t.strength)) ? t.strength : 10.5;
+    return s + (21 - validStrength)*left;
   },0);
 }
 // auto-pick: first away team (in fixture order) the manager hasn't used twice
@@ -791,7 +796,7 @@ function pickedTeamValue(name){
     if(!p || !p.team) return;
     if(!g.results || !g.results[p.team]) return;
     const snap = g.tableSnapshot.find(t=>t.name===p.team);
-    if(!snap) return;
+    if(!snap || typeof snap.strength !== 'number' || isNaN(snap.strength)) return;   // no valid data — exclude this pick rather than fabricate a score
     total += 21 - snap.strength;
     count++;
   });
@@ -2576,13 +2581,15 @@ function computeSeasonExtremes(){
     Object.entries(g.applied).forEach(([name,a])=>{
       if(a.result==='W' && g.tableSnapshot){
         const snap = g.tableSnapshot.find(t=>t.name===a.team);
-        if(snap && (!biggestUpset || snap.strength > biggestUpset.position)){
+        const valid = snap && typeof snap.strength === 'number' && !isNaN(snap.strength);
+        if(valid && (!biggestUpset || snap.strength > biggestUpset.position)){
           biggestUpset = {manager:name, team:a.team, gw:n, position:snap.strength};
         }
       }
       if(a.result==='L' && g.tableSnapshot){
         const snap = g.tableSnapshot.find(t=>t.name===a.team);
-        if(snap && (!biggestHeartbreak || snap.strength < biggestHeartbreak.position)){
+        const valid = snap && typeof snap.strength === 'number' && !isNaN(snap.strength);
+        if(valid && (!biggestHeartbreak || snap.strength < biggestHeartbreak.position)){
           biggestHeartbreak = {manager:name, team:a.team, gw:n, position:snap.strength};
         }
       }
