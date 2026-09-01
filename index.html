@@ -2280,15 +2280,16 @@ function renderLimits(){
 // against manually-entered ones, across the whole season — and whether the
 // robot's win rate would beat any real manager's own overall win rate
 function computeAutoPickRecord(){
-  const auto = {picks:0, wins:0, draws:0, losses:0};
-  const manual = {picks:0, wins:0, draws:0, losses:0};
+  const QNAME = 'Q';
+  const auto = {picks:0, wins:0, draws:0, losses:0};   // Q's own picks specifically
+  const manual = {picks:0, wins:0, draws:0, losses:0}; // every other manager
   Object.values(state.gameweeks||{}).forEach(g=>{
     if(g.status!=='resolved') return;
-    Object.values(g.picks||{}).forEach(p=>{
+    Object.entries(g.picks||{}).forEach(([name,p])=>{
       if(!p || !p.team) return;
       const res = g.results && g.results[p.team];
       if(!res) return;
-      const bucket = p.auto ? auto : manual;
+      const bucket = (name===QNAME) ? auto : manual;
       bucket.picks++;
       if(res==='W') bucket.wins++; else if(res==='D') bucket.draws++; else bucket.losses++;
     });
@@ -2296,6 +2297,7 @@ function computeAutoPickRecord(){
   const rate = b => b.picks ? b.wins/b.picks : null;
   const autoRate = rate(auto);
   const beaten = autoRate===null ? [] : state.managers.filter(m=>{
+    if(m.name===QNAME) return false;   // Q can't be counted as "beaten by Q"
     const total = m.wins+m.draws+m.losses;
     return total>0 && (m.wins/total) < autoRate;
   });
