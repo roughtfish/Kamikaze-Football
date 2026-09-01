@@ -2852,7 +2852,7 @@ function computeTeamPopularity(onlyResolved){
   return state.teams.map(t=>({team:t.name, count:counts[t.name]||0})).sort((a,b)=>b.count-a.count);
 }
 function renderTeamPopularityPanel(){
-  const pop = computeTeamPopularity();
+  const pop = computeTeamPopularity(true);
   const totalPicks = pop.reduce((s,t)=>s+t.count,0);
   if(!totalPicks) return '';
   const maxCount = pop[0].count || 1;
@@ -2875,7 +2875,7 @@ function renderTeamPopularityPanel(){
 }
 async function shareTeamPopularityImage(){
   try{
-    const pop = computeTeamPopularity();
+    const pop = computeTeamPopularity(true);
     const totalPicks = pop.reduce((s,t)=>s+t.count,0);
     if(!totalPicks){ toast('No picks recorded yet'); return; }
     const maxCount = pop[0].count || 1;
