@@ -703,7 +703,12 @@ function computeHeadToHeadLeaderboard(){
     const losses = opponents.reduce((s,o)=>s+o.losses,0);
     return {name, wins, draws, losses, played: wins+draws+losses, opponents};
   }).filter(t=>t.played>0)
-    .sort((a,b)=> b.wins-a.wins || b.played-a.played);
+    .sort((a,b)=>{
+      const ptsA = a.wins*3 + a.draws, ptsB = b.wins*3 + b.draws;
+      if(ptsB !== ptsA) return ptsB - ptsA;
+      if(a.losses !== b.losses) return a.losses - b.losses;   // fewer losses ranks higher when points are tied
+      return b.played - a.played;   // final tiebreak: more proven over a larger sample
+    });
 }
 function renderHeadToHeadLeaderboardPanel(){
   const board = computeHeadToHeadLeaderboard();
