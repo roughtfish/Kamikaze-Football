@@ -1566,23 +1566,45 @@ async function shareStandingsImage(){
 // pulls the live PL table and sets each team's "strength" to its current league position
 // (1 = top). Lower summed position among a manager's *remaining* teams then correctly
 // means "still has strong teams in reserve" — matching the rulebook tiebreak exactly.
+// finds the highest matchday that's entirely finished, probing forward from
+// the most recently resolved gameweek — used so "update from live table" uses
+// the SAME replay algorithm as every other table computation in the app,
+// rather than a separate official-API table that can disagree on tied teams
+// (the official table breaks ties with head-to-head record; the replay here
+// doesn't replicate that — but having exactly one algorithm everywhere means
+// nothing can ever drift out of sync with anything else, which matters more)
+async function findLatestFinishedMatchday(){
+  const resolvedGws = Object.keys(state.gameweeks||{}).map(Number).filter(n=>state.gameweeks[n].status==='resolved');
+  let latestFinished = resolvedGws.length ? Math.max(...resolvedGws) : 0;
+  for(let md = latestFinished+1; md <= 38; md++){
+    let events;
+    try{ ({events} = await tsdbFetchRound(md)); }
+    catch(e){ break; }
+    if(!events.length) break;
+    if(!events.every(e=>e.finished)) break;
+    latestFinished = md;
+  }
+  return latestFinished;
+}
 async function fetchLiveTable(){
-  const res = await fetch(`${FD_PROXY_URL}?table=1`);
-  if(!res.ok) throw new Error(`Table proxy returned ${res.status}`);
-  const data = await res.json();
-  if(data.error) throw new Error(data.error);
-  const totalTable = (data.standings||[]).find(s=>s.type==='TOTAL');
-  const rows = totalTable ? totalTable.table : [];
-  let unmatched = 0, matched = 0;
-  rows.forEach(r=>{
-    const our = fdToOurName(r.team && r.team.name);
-    if(!our){ unmatched++; return; }
-    const t = state.teams.find(x=>x.name===our);
-    if(t){ t.strength = r.position; matched++; }
-  });
+  const latestMd = await findLatestFinishedMatchday();
+  if(latestMd < 1){
+    state.tableUpdatedAt = new Date().toISOString();
+    save();
+    return {matched: 0, unmatched: 0, total: 0};
+  }
+  const matches = await fetchSeasonMatchesUpTo(latestMd);
+  const standings = computeStandingsFromMatches(matches, latestMd+1);   // "< latestMd+1" = through latestMd
+  let matched = 0;
+  if(standings){
+    state.teams.forEach(t=>{
+      const s = standings.find(x=>x.name===t.name);
+      if(s){ t.strength = s.position; matched++; }
+    });
+  }
   state.tableUpdatedAt = new Date().toISOString();
   save();
-  return {matched, unmatched, total: rows.length};
+  return {matched, unmatched: state.teams.length-matched, total: state.teams.length};
 }
 // fetches every finished match from matchday 1 through upToMatchday (inclusive),
 // reusing the same fixtures/results endpoint used everywhere else — no proxy
