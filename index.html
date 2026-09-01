@@ -1038,14 +1038,14 @@ async function exportCardAsShare(innerHtml, filename, shareTitle){
   await showSharePreview(blob, file, shareTitle);
 }
 function showSquadStrengthDetail(m, breakdown, historicalGw){
-  const rows = breakdown.rows.map(r=>`
+  const rows = breakdown.rows ? breakdown.rows.map(r=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line-soft);">
       <span style="font-size:14px;">${r.team}</span>
       <span style="display:flex;align-items:center;gap:10px;">
         <span class="note" style="font-size:12px;">pos ${r.position}${r.left===2?' · ×2 left':''}</span>
         <span style="font-family:var(--num);font-weight:600;font-size:14px;width:32px;text-align:right;">${Math.round(r.value)}</span>
       </span>
-    </div>`).join('');
+    </div>`).join('') : null;
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;'+
     'padding:20px;background:rgba(4,7,14,.92);backdrop-filter:blur(4px);';
@@ -1057,7 +1057,7 @@ function showSquadStrengthDetail(m, breakdown, historicalGw){
         <div style="font-family:var(--num);font-weight:700;font-size:18px;color:var(--go);">${Math.round(breakdown.total)}</div>
       </div>
       <div class="note" style="margin-bottom:12px;">${historicalGw ? `Breakdown as it stood right after Gameweek ${historicalGw}` : 'Breakdown right now'} — each remaining team's value (21 minus its position), doubled if two uses are still left</div>
-      <div>${rows.length ? rows : '<p class="note">No teams left in reserve.</p>'}</div>
+      <div>${rows === null ? '<p class="note">This gameweek was resolved before per-team breakdowns existed — the total above is still correct, but run "Repair past gameweeks" to see the detail here too.</p>' : (rows ? rows : '<p class="note">No teams left in reserve.</p>')}</div>
       <button class="btn ghost" id="squadStrDetailClose" style="width:100%;margin-top:14px;">Close</button>
     </div>`;
   document.body.appendChild(overlay);
@@ -1455,7 +1455,11 @@ async function shareSquadStrImage(){
   try{
     const viewedGw = gwObj(gw());
     const historicalSnap = viewedGw && viewedGw.squadStrengthSnapshot;
-    const squadStrFor = m => historicalSnap && historicalSnap[m.name] ? historicalSnap[m.name].total : remainingStrengthSum(m);
+    const squadStrFor = m => {
+      const hist = historicalSnap && historicalSnap[m.name];
+      if(hist == null) return remainingStrengthSum(m);
+      return typeof hist === 'number' ? hist : hist.total;
+    };
     const rows = [...state.managers]
       .sort((a,b)=>squadStrFor(b)-squadStrFor(a))
       .map((m,i)=>{
@@ -2507,7 +2511,12 @@ function renderLimits(){
   const viewedGw = gwObj(gw());
   const historicalSnap = viewedGw && viewedGw.squadStrengthSnapshot;
   const liveBreakdownFor = m => squadStrengthBreakdown(m.used||{}, t=>(typeof t.strength==='number' && !isNaN(t.strength)) ? t.strength : 10.5);
-  const breakdownFor = m => (historicalSnap && historicalSnap[m.name]) ? historicalSnap[m.name] : liveBreakdownFor(m);
+  const breakdownFor = m => {
+    const hist = historicalSnap && historicalSnap[m.name];
+    if(hist == null) return liveBreakdownFor(m);
+    if(typeof hist === 'number') return {total: hist, rows: null};   // captured before per-team breakdowns existed
+    return hist;
+  };
   const squadStrLabel = historicalSnap
     ? `Squad strength as it stood right after Gameweek ${gw()} — tap a total to see the breakdown`
     : `Squad strength right now — Gameweek ${gw()} doesn't have a historical snapshot yet — tap a total to see the breakdown`;
