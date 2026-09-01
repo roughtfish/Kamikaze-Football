@@ -572,6 +572,21 @@ function isBanned(m,t){ return used(m,t) >= state.maxPicksPerTeam; }
 function availableTeams(m){ return state.teams.filter(t=>!isBanned(m,t.name)); }
 // each remaining pick on a team adds its position value — so a team you can
 // still use twice counts twice, once if you've got one shot left on it
+// computes the per-team squad-strength breakdown (and its total) given a
+// manager's team-usage map and a way to look up each team's relevant position —
+// shared by the live calculation, the apply-time capture, and the repair
+// backfill, so the displayed total and its detailed breakdown can never disagree
+function squadStrengthBreakdown(usedMap, positionFor){
+  const rows = state.teams.map(t=>{
+    const usedCount = usedMap[t.name] || 0;
+    if(usedCount >= state.maxPicksPerTeam) return null;   // banned by this point — contributes nothing
+    const left = state.maxPicksPerTeam - usedCount;
+    const pos = positionFor(t);
+    return {team:t.name, position:pos, left, value:(21-pos)*left};
+  }).filter(Boolean).sort((a,b)=>b.value-a.value);
+  const total = rows.reduce((s,r)=>s+r.value,0);
+  return {total, rows};
+}
 function remainingStrengthSum(m){
   // same scale as Picked Team Value: 21 minus league position, so Arsenal (pos 1) = 20.
   // each remaining pick on a team adds its value — so a team you can still use twice
@@ -580,11 +595,8 @@ function remainingStrengthSum(m){
   // falls back to the league average (10.5) rather than corrupting the whole sum
   // with NaN — every manager draws from the same shared pool, so this stays fair
   // across all of them rather than favouring whoever hasn't used that team yet
-  return state.teams.filter(t=>!isBanned(m,t.name)).reduce((s,t)=>{
-    const left = state.maxPicksPerTeam - used(m,t.name);   // >=1, since banned teams are filtered out
-    const validStrength = (typeof t.strength === 'number' && !isNaN(t.strength)) ? t.strength : 10.5;
-    return s + (21 - validStrength)*left;
-  },0);
+  const positionFor = t => (typeof t.strength === 'number' && !isNaN(t.strength)) ? t.strength : 10.5;
+  return squadStrengthBreakdown(m.used||{}, positionFor).total;
 }
 // auto-pick: first away team (in fixture order) the manager hasn't used twice
 function awayTeams(g){ return ((g&&g.fixtures)||[]).map(f=>f&&f.away).filter(Boolean); }
@@ -1025,6 +1037,34 @@ async function exportCardAsShare(innerHtml, filename, shareTitle){
   const file = new File([blob], filename, {type:'image/png'});
   await showSharePreview(blob, file, shareTitle);
 }
+function showSquadStrengthDetail(m, breakdown, historicalGw){
+  const rows = breakdown.rows.map(r=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line-soft);">
+      <span style="font-size:14px;">${r.team}</span>
+      <span style="display:flex;align-items:center;gap:10px;">
+        <span class="note" style="font-size:12px;">pos ${r.position}${r.left===2?' · ×2 left':''}</span>
+        <span style="font-family:var(--num);font-weight:600;font-size:14px;width:32px;text-align:right;">${Math.round(r.value)}</span>
+      </span>
+    </div>`).join('');
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;'+
+    'padding:20px;background:rgba(4,7,14,.92);backdrop-filter:blur(4px);';
+  overlay.innerHTML = `
+    <div style="width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);
+      border-radius:16px;padding:18px;box-shadow:var(--shadow);max-height:80vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+        <div style="font-family:var(--disp);font-weight:700;font-size:18px;">${m.name}</div>
+        <div style="font-family:var(--num);font-weight:700;font-size:18px;color:var(--go);">${Math.round(breakdown.total)}</div>
+      </div>
+      <div class="note" style="margin-bottom:12px;">${historicalGw ? `Breakdown as it stood right after Gameweek ${historicalGw}` : 'Breakdown right now'} — each remaining team's value (21 minus its position), doubled if two uses are still left</div>
+      <div>${rows.length ? rows : '<p class="note">No teams left in reserve.</p>'}</div>
+      <button class="btn ghost" id="squadStrDetailClose" style="width:100%;margin-top:14px;">Close</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=>document.body.removeChild(overlay);
+  overlay.querySelector('#squadStrDetailClose').onclick = close;
+  overlay.onclick = e=>{ if(e.target===overlay) close(); };
+}
 function showHeadToHeadDetail(name){
   const board = computeHeadToHeadLeaderboard();
   const entry = board.find(b=>b.name===name);
@@ -1415,7 +1455,7 @@ async function shareSquadStrImage(){
   try{
     const viewedGw = gwObj(gw());
     const historicalSnap = viewedGw && viewedGw.squadStrengthSnapshot;
-    const squadStrFor = m => historicalSnap ? (historicalSnap[m.name] ?? remainingStrengthSum(m)) : remainingStrengthSum(m);
+    const squadStrFor = m => historicalSnap && historicalSnap[m.name] ? historicalSnap[m.name].total : remainingStrengthSum(m);
     const rows = [...state.managers]
       .sort((a,b)=>squadStrFor(b)-squadStrFor(a))
       .map((m,i)=>{
@@ -1690,14 +1730,8 @@ async function repairHistoricalTableSnapshots(){
       state.gameweeks[n].squadStrengthSnapshot = {};
       state.managers.forEach(m=>{
         const usedMap = usedThroughGameweek(m.name, n);
-        state.gameweeks[n].squadStrengthSnapshot[m.name] = state.teams.reduce((s,t)=>{
-          const usedCount = usedMap[t.name] || 0;
-          if(usedCount >= state.maxPicksPerTeam) return s;
-          const left = state.maxPicksPerTeam - usedCount;
-          const snap = afterStandings.find(x=>x.name===t.name);
-          const pos = snap ? snap.position : 10.5;
-          return s + (21-pos)*left;
-        }, 0);
+        const positionFor = t=>{ const snap = afterStandings.find(x=>x.name===t.name); return snap ? snap.position : 10.5; };
+        state.gameweeks[n].squadStrengthSnapshot[m.name] = squadStrengthBreakdown(usedMap, positionFor);
       });
     }
   });
@@ -2387,14 +2421,8 @@ async function applyGameweek(n){
       if(afterStandings){
         g.squadStrengthSnapshot = {};
         state.managers.forEach(m=>{
-          g.squadStrengthSnapshot[m.name] = state.teams.reduce((s,t)=>{
-            const usedCount = (m.used && m.used[t.name]) || 0;
-            if(usedCount >= state.maxPicksPerTeam) return s;   // banned by this point
-            const left = state.maxPicksPerTeam - usedCount;
-            const snap = afterStandings.find(x=>x.name===t.name);
-            const pos = snap ? snap.position : 10.5;
-            return s + (21-pos)*left;
-          }, 0);
+          const positionFor = t=>{ const snap = afterStandings.find(x=>x.name===t.name); return snap ? snap.position : 10.5; };
+          g.squadStrengthSnapshot[m.name] = squadStrengthBreakdown(m.used||{}, positionFor);
         });
         // also sync the live/global team strength to match — otherwise an open
         // gameweek's LIVE squad strength number (which reads this directly) could
@@ -2478,10 +2506,11 @@ function renderLimits(){
     {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
   const viewedGw = gwObj(gw());
   const historicalSnap = viewedGw && viewedGw.squadStrengthSnapshot;
-  const squadStrFor = m => historicalSnap ? (historicalSnap[m.name] ?? remainingStrengthSum(m)) : remainingStrengthSum(m);
+  const liveBreakdownFor = m => squadStrengthBreakdown(m.used||{}, t=>(typeof t.strength==='number' && !isNaN(t.strength)) ? t.strength : 10.5);
+  const breakdownFor = m => (historicalSnap && historicalSnap[m.name]) ? historicalSnap[m.name] : liveBreakdownFor(m);
   const squadStrLabel = historicalSnap
-    ? `Squad strength as it stood right after Gameweek ${gw()}`
-    : `Squad strength right now — Gameweek ${gw()} doesn't have a historical snapshot yet`;
+    ? `Squad strength as it stood right after Gameweek ${gw()} — tap a total to see the breakdown`
+    : `Squad strength right now — Gameweek ${gw()} doesn't have a historical snapshot yet — tap a total to see the breakdown`;
   let html = `<div class="panel"><div class="phead"><h2>Pick limits</h2>
     <span class="hint">Each team usable ${state.maxPicksPerTeam}× · then banned for that manager</span></div>
     <div class="toolbar" style="border-top:0">
@@ -2493,11 +2522,12 @@ function renderLimits(){
     <div style="overflow-x:auto"><table class="grid"><thead><tr><th>Manager</th><th class="num">Bans</th><th>Banned teams (used ${state.maxPicksPerTeam}×)</th><th class="num">Squad str</th></tr></thead><tbody>`;
   sortedStandings().forEach(m=>{
     const banned = state.teams.filter(t=>isBanned(m,t.name)).map(t=>t.name);
+    const breakdown = breakdownFor(m);
     html += `<tr ${m.eliminated?'style="opacity:.5"':''}>
       <td>${m.name}</td>
       <td class="num">${banned.length}</td>
       <td class="banlist">${banned.length?banned.join(', '):'<span class="strength">none</span>'}</td>
-      <td class="num">${Math.round(squadStrFor(m))}</td></tr>`;
+      <td class="num"><span class="squadStrCell" data-manager="${m.name.replace(/"/g,'&quot;')}" style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted;">${Math.round(breakdown.total)}</span></td></tr>`;
   });
   html += `</tbody></table></div>
     <div class="toolbar">
@@ -2507,6 +2537,12 @@ function renderLimits(){
     </div>
     <div class="toolbar"><span class="note">"Squad str" = sum of each remaining team's value (21 minus its league position at the relevant point, so 1st place = 20) — counted once per remaining pick, so a team you can still use twice counts twice. Highest wins the final tiebreak: it means they've still got the strongest teams genuinely in reserve. Same scale as "Picked team value" on the player stats page.</span></div></div>`;
   view.innerHTML = html;
+  view.querySelectorAll('.squadStrCell').forEach(el=>{
+    el.onclick = ()=>{
+      const m = state.managers.find(x=>x.name===el.dataset.manager);
+      if(m) showSquadStrengthDetail(m, breakdownFor(m), historicalSnap ? gw() : null);
+    };
+  });
   document.getElementById('shareLimits').onclick = async ()=>{
     const note=document.getElementById('limitsShareNote'); note.textContent='Building image…';
     try{ await shareLimitsImage(); note.textContent=''; }
