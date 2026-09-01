@@ -1573,6 +1573,61 @@ async function fetchLiveTable(){
   save();
   return {matched, unmatched, total: rows.length};
 }
+// fetches every finished match from matchday 1 through upToMatchday (inclusive),
+// reusing the same fixtures/results endpoint used everywhere else — no proxy
+// changes needed. Sequential, one call per matchday; fine for a rare admin action.
+async function fetchSeasonMatchesUpTo(upToMatchday){
+  const allMatches = [];
+  for(let md=1; md<=upToMatchday; md++){
+    const {events} = await tsdbFetchRound(md);
+    events.forEach(e=>{
+      if(e.finished && e.homeScore!=null && e.awayScore!=null){
+        allMatches.push({home:e.home, away:e.away, homeScore:e.homeScore, awayScore:e.awayScore, matchday:md});
+      }
+    });
+  }
+  return allMatches;
+}
+// standard football table math — 3pts win, 1pt draw, 0pts loss — ranked by
+// points, then goal difference, then goals scored. Head-to-head record isn't
+// practical to replicate here, so this is a close approximation of the exact
+// official tiebreak in the rare case it'd matter, not a perfect reproduction.
+function computeStandingsFromMatches(matches, uptoMatchday){
+  const table = {};
+  state.teams.forEach(t=>{ table[t.name] = {name:t.name, points:0, gf:0, ga:0}; });
+  matches.filter(m=>m.matchday<=uptoMatchday).forEach(m=>{
+    const h = table[m.home], a = table[m.away];
+    if(!h || !a) return;   // team name mismatch — skip rather than crash the whole replay
+    h.gf += m.homeScore; h.ga += m.awayScore;
+    a.gf += m.awayScore; a.ga += m.homeScore;
+    if(m.homeScore > m.awayScore) h.points += 3;
+    else if(m.homeScore < m.awayScore) a.points += 3;
+    else { h.points += 1; a.points += 1; }
+  });
+  const ranked = Object.values(table).map(t=>({...t, gd: t.gf - t.ga}))
+    .sort((a,b)=> b.points-a.points || b.gd-a.gd || b.gf-a.gf);
+  ranked.forEach((t,i)=>{ t.position = i+1; });
+  return ranked;
+}
+// re-scores every already-resolved gameweek's table snapshot using the actual
+// table position that gameweek's matchday genuinely held at the time — computed
+// by replaying every real result up to that point, not an approximation.
+async function repairHistoricalTableSnapshots(){
+  const resolvedGws = Object.keys(state.gameweeks||{}).map(Number)
+    .filter(n=>state.gameweeks[n].status==='resolved').sort((a,b)=>a-b);
+  if(!resolvedGws.length) return {fixed:0};
+  const maxGw = Math.max(...resolvedGws);
+  const allMatches = await fetchSeasonMatchesUpTo(maxGw);
+  resolvedGws.forEach(n=>{
+    const standings = computeStandingsFromMatches(allMatches, n);
+    state.gameweeks[n].tableSnapshot = state.teams.map(t=>{
+      const s = standings.find(x=>x.name===t.name);
+      return {name:t.name, strength: s ? s.position : t.strength};
+    });
+  });
+  save();
+  return {fixed: resolvedGws.length};
+}
 // returns {events:[{home,away,homeScore,awayScore,finished}], unmatched:Number} or throws
 async function tsdbFetchRound(roundNum){
   const res = await fetch(`${FD_PROXY_URL}?matchday=${roundNum}`);
@@ -2084,7 +2139,12 @@ function renderResolve(){
       save();
     };
   });
-  document.getElementById('applyGw').onclick = ()=>applyGameweek(n);
+  document.getElementById('applyGw').onclick = async ()=>{
+    const btn = document.getElementById('applyGw');
+    btn.disabled = true; const prevText = btn.textContent; btn.textContent = 'Applying…';
+    try{ await applyGameweek(n); }
+    finally{ btn.disabled = false; btn.textContent = prevText; }
+  };
   document.getElementById('backPicks').onclick = ()=>setTab('picks');
   document.getElementById('fetchRes').onclick = async ()=>{
     const note=document.getElementById('resFetchNote'); note.textContent='Fetching…';
@@ -2193,13 +2253,27 @@ function reverseAppliedForManager(g, m){
   m.eliminated = m.lives <= 0;
   delete g.applied[m.name];
 }
-function applyGameweek(n){
+async function applyGameweek(n){
   const g = gwObj(n, true);
   materializeAutos(g);                       // no-shows get their auto away team
   // lock in the league table as it stood entering this gameweek, once — re-resolving
-  // or undoing later never overwrites it, so "picked team value" stays historically honest
+  // or undoing later never overwrites it, so "picked team value" stays historically honest.
+  // computed by replaying every real result up to this gameweek's matchday, so it's
+  // accurate even if there's a delay between the matches being played and being
+  // resolved here — if the fetch fails, fall back to whatever's already on file
+  // rather than blocking the whole apply action over a network hiccup
   if(!g.tableSnapshot){
-    g.tableSnapshot = state.teams.map(t=>({name:t.name, strength:t.strength}));
+    try{
+      const matches = await fetchSeasonMatchesUpTo(n);
+      const standings = computeStandingsFromMatches(matches, n);
+      g.tableSnapshot = state.teams.map(t=>{
+        const s = standings.find(x=>x.name===t.name);
+        return {name:t.name, strength: s ? s.position : t.strength};
+      });
+    }catch(e){
+      console.warn('table auto-fetch failed, using existing strength values:', e);
+      g.tableSnapshot = state.teams.map(t=>({name:t.name, strength:t.strength}));
+    }
   }
   const picks = Object.entries(g.picks||{}).filter(([,p])=>p.team);
   g.applied = g.applied || {};
@@ -2277,6 +2351,7 @@ function renderLimits(){
     <span class="hint">Each team usable ${state.maxPicksPerTeam}× · then banned for that manager</span></div>
     <div class="toolbar" style="border-top:0">
       <button class="btn ghost" id="fetchTable">⇣ Update from live table</button>
+      <button class="btn ghost" id="repairSnapshots">🔧 Repair past gameweeks</button>
       <span class="note" id="tableFetchNote">${updated ? `Table positions as of ${updated}` : 'Not pulled yet — using placeholder order'}</span>
     </div>
     <div style="overflow-x:auto"><table class="grid"><thead><tr><th>Manager</th><th class="num">Bans</th><th>Banned teams (used ${state.maxPicksPerTeam}×)</th><th class="num">Squad str</th></tr></thead><tbody>`;
@@ -2314,6 +2389,26 @@ function renderLimits(){
       setTab('limits');
     }catch(e){
       note.textContent = 'Fetch failed: '+e.message;
+    }
+  };
+  document.getElementById('repairSnapshots').onclick = async ()=>{
+    const msg = "Re-score every already-resolved gameweek's Picked Team Value and Season "+
+      "Extremes using the table position each team actually held at the time?\n\nThis replays "+
+      "every real match result up to each gameweek's matchday to compute the genuine historical "+
+      "table — not today's table applied backwards. This may take a few seconds and use a few "+
+      "API calls, one per matchday.";
+    if(!confirm(msg)) return;
+    const btn = document.getElementById('repairSnapshots');
+    btn.disabled = true; const prevText = btn.textContent; btn.textContent = 'Repairing…';
+    try{
+      const {fixed} = await repairHistoricalTableSnapshots();
+      toast(fixed ? `Repaired ${fixed} gameweek${fixed===1?'':'s'}` : 'No resolved gameweeks to repair');
+      autoPublishStats();
+      setTab('limits');
+    }catch(e){
+      toast('Repair failed: '+e.message);
+    }finally{
+      btn.disabled = false; btn.textContent = prevText;
     }
   };
 }
