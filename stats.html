@@ -469,10 +469,15 @@ function renderStats(snap){
   // Current streaks
   const streaksData = snap.streaks;
   let streaksHtml = '';
+  const joinNames = names => {
+    if(names.length===1) return names[0];
+    if(names.length===2) return names[0]+' and '+names[1];
+    return names.slice(0,-1).join(', ')+', and '+names[names.length-1];
+  };
   if(streaksData && (streaksData.bestWin || streaksData.worstLoss)){
     const lines = [];
-    if(streaksData.bestWin) lines.push(`<b>🔥 Hot streak:</b> ${streaksData.bestWin.name} has won ${streaksData.bestWin.winStreak} gameweeks in a row.`);
-    if(streaksData.worstLoss) lines.push(`<b>🥶 Cold streak:</b> ${streaksData.worstLoss.name} has lost ${streaksData.worstLoss.lossStreak} gameweeks in a row.`);
+    if(streaksData.bestWin) lines.push(`<b>🔥 Hot streak:</b> ${joinNames(streaksData.bestWin.names)} ${streaksData.bestWin.names.length===1?'has':'have'} won ${streaksData.bestWin.length} gameweeks in a row.`);
+    if(streaksData.worstLoss) lines.push(`<b>🥶 Cold streak:</b> ${joinNames(streaksData.worstLoss.names)} ${streaksData.worstLoss.names.length===1?'has':'have'} lost ${streaksData.worstLoss.length} gameweeks in a row.`);
     streaksHtml = `<div class="panel"><div class="phead"><h2>Current streaks</h2></div>
       <div style="padding:8px 16px 14px;display:grid;gap:8px;font-size:13.5px;color:var(--muted);">${lines.map(l=>`<div>${l}</div>`).join('')}</div></div>`;
   }
