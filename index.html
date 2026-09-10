@@ -814,6 +814,50 @@ function pickedTeamValue(name){
   });
   return {total, count};
 }
+function renderPickedTeamValuePanel(){
+  const rows = state.managers.map(m=>({name:m.name, ...pickedTeamValue(m.name)}))
+    .filter(r=>r.count>0).sort((a,b)=>b.total-a.total);
+  if(!rows.length) return '';
+  return `<div class="panel"><div class="phead"><h2>Picked team value</h2>
+      <span class="hint">Strength of teams picked, scored against the table at the time</span></div>
+    <div class="board">
+      <div class="row head" style="grid-template-columns:28px 1fr 80px"><span>#</span><span>Manager</span><span style="text-align:right">Value</span></div>
+      ${rows.map((r,i)=>`
+        <div class="row mgr" style="grid-template-columns:28px 1fr 80px">
+          <span class="rank ${i===0?'lead':''}">${i+1}</span>
+          <span class="who"><span class="nm">${r.name}</span></span>
+          <span class="lifenum go" style="font-size:15px">${Math.round(r.total)}</span>
+        </div>`).join('')}
+    </div>
+    <div class="legend">Each pick scores 21 minus the picked team's league position at that gameweek (1st = 20pts, 20th = 1pt), summed across the season. Higher = stronger picks on average.</div>
+    <div class="toolbar"><button class="btn ghost sharePTV">Share picked team value</button></div></div>`;
+}
+async function sharePickedTeamValueImage(){
+  try{
+    const rows = state.managers.map(m=>({name:m.name, ...pickedTeamValue(m.name)}))
+      .filter(r=>r.count>0).sort((a,b)=>b.total-a.total);
+    if(!rows.length){ toast('No qualifying picks yet'); return; }
+    const html = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
+        <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
+      </div>
+      <div style="font-size:13px;color:#8ea0c0;margin-bottom:12px;">Picked team value</div>
+      <div>${rows.map((r,i)=>{
+        const nameStyle = 'color:#eaf1fb;';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1c2a44;">
+          <span style="width:22px;font-family:Barlow,sans-serif;font-weight:700;font-size:15px;color:#8ea0c0;text-align:center;flex-shrink:0;">${i+1}</span>
+          <span style="flex:1;font-size:14px;${nameStyle}">${r.name}</span>
+          <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:15px;color:#19e2a0;">${Math.round(r.total)}</span>
+        </div>`;
+      }).join('')}</div>
+      <div style="font-size:10.5px;color:#5e7095;margin-top:12px;">Each pick scores 21 minus the picked team's league position at that gameweek — summed across the season. Higher means stronger picks on average.</div>`;
+    await exportCardAsShare(html, `kamikaze-${(state.season||'season').replace(/\//g,'-')}-picked-team-value.png`, `${state.season||''} picked team value`);
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
+}
 
 // what a normal (no card) pick would have yielded for a given result
 function baselineDelta(result){
@@ -3228,6 +3272,7 @@ function renderHistory(){
     ${renderStreaksPanel()}
     ${renderHeadToHeadLeaderboardPanel()}
     ${renderRivalryPanel()}
+    ${renderPickedTeamValuePanel()}
     ${renderTeamPopularityPanel()}
     ${renderTeamPerformancePanel()}
     ${renderContrarianPanel()}
@@ -3248,6 +3293,7 @@ function renderHistory(){
   view.querySelectorAll('.shareLivingDangerously').forEach(b=>{ b.onclick = ()=>shareLivingDangerouslyImage(); });
   view.querySelectorAll('.shareRivalry').forEach(b=>{ b.onclick = ()=>shareRivalryImage(); });
   view.querySelectorAll('.shareStreaks').forEach(b=>{ b.onclick = ()=>shareStreaksImage(); });
+  view.querySelectorAll('.sharePTV').forEach(b=>{ b.onclick = ()=>sharePickedTeamValueImage(); });
 }
 
 /* --- Rules --- */
