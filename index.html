@@ -2614,9 +2614,10 @@ function renderLimits(){
     </div>
     <div class="toolbar" style="border-top:0"><span class="note">${squadStrLabel}</span></div>
     <div style="overflow-x:auto"><table class="grid"><thead><tr><th>Manager</th><th class="num">Bans</th><th>Banned teams (used ${state.maxPicksPerTeam}×)</th><th class="num">Squad str</th></tr></thead><tbody>`;
-  sortedStandings().forEach(m=>{
+  const rankedByStrength = sortedStandings().map(m=>({m, breakdown: breakdownFor(m)}))
+    .sort((a,b)=> b.breakdown.total - a.breakdown.total);
+  rankedByStrength.forEach(({m, breakdown})=>{
     const banned = state.teams.filter(t=>isBanned(m,t.name)).map(t=>t.name);
-    const breakdown = breakdownFor(m);
     html += `<tr ${m.eliminated?'style="opacity:.5"':''}>
       <td>${m.name}</td>
       <td class="num">${banned.length}</td>
