@@ -802,28 +802,32 @@ function sortedStandings(){
 // someone's actually got a result on the board.
 function pickedTeamValue(name){
   let total=0, count=0;
-  Object.values(state.gameweeks||{}).forEach(g=>{
+  const rows = [];
+  Object.keys(state.gameweeks||{}).map(Number).sort((a,b)=>a-b).forEach(n=>{
+    const g = state.gameweeks[n];
     if(g.status!=='resolved' || !g.tableSnapshot) return;
     const p = g.picks && g.picks[name];
     if(!p || !p.team) return;
     if(!g.results || !g.results[p.team]) return;
     const snap = g.tableSnapshot.find(t=>t.name===p.team);
     if(!snap || typeof snap.strength !== 'number' || isNaN(snap.strength)) return;   // no valid data — exclude this pick rather than fabricate a score
-    total += 21 - snap.strength;
+    const value = 21 - snap.strength;
+    total += value;
     count++;
+    rows.push({gw:n, team:p.team, position:snap.strength, result:g.results[p.team], value});
   });
-  return {total, count};
+  return {total, count, rows};
 }
 function renderPickedTeamValuePanel(){
   const rows = state.managers.map(m=>({name:m.name, ...pickedTeamValue(m.name)}))
     .filter(r=>r.count>0).sort((a,b)=>b.total-a.total);
   if(!rows.length) return '';
   return `<div class="panel"><div class="phead"><h2>Picked team value</h2>
-      <span class="hint">Strength of teams picked, scored against the table at the time</span></div>
+      <span class="hint">Tap a manager to see the breakdown by gameweek</span></div>
     <div class="board">
       <div class="row head" style="grid-template-columns:28px 1fr 80px"><span>#</span><span>Manager</span><span style="text-align:right">Value</span></div>
       ${rows.map((r,i)=>`
-        <div class="row mgr" style="grid-template-columns:28px 1fr 80px">
+        <div class="row mgr" style="grid-template-columns:28px 1fr 80px;cursor:pointer" data-ptv-name="${r.name.replace(/"/g,'&quot;')}">
           <span class="rank ${i===0?'lead':''}">${i+1}</span>
           <span class="who"><span class="nm">${r.name}</span></span>
           <span class="lifenum go" style="font-size:15px">${Math.round(r.total)}</span>
@@ -1112,6 +1116,67 @@ function showSquadStrengthDetail(m, breakdown, historicalGw){
   overlay.querySelector('#squadStrDetailClose').onclick = close;
   overlay.querySelector('#squadStrDetailShare').onclick = ()=>shareSquadStrengthDetailImage(m, breakdown, historicalGw);
   overlay.onclick = e=>{ if(e.target===overlay) close(); };
+}
+function showPickedTeamValueDetail(name, ptv){
+  const rows = ptv.rows.map(r=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line-soft);">
+      <span style="font-size:14px;">GW${r.gw} · ${r.team}</span>
+      <span style="display:flex;align-items:center;gap:10px;">
+        <span class="note" style="font-size:12px;">pos ${r.position} · <span class="histres ${r.result==='W'?'go':r.result==='L'?'danger':'warn'}">${r.result}</span></span>
+        <span style="font-family:var(--num);font-weight:600;font-size:14px;width:32px;text-align:right;">${Math.round(r.value)}</span>
+      </span>
+    </div>`).join('');
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;'+
+    'padding:20px;background:rgba(4,7,14,.92);backdrop-filter:blur(4px);';
+  overlay.innerHTML = `
+    <div style="width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);
+      border-radius:16px;padding:18px;box-shadow:var(--shadow);max-height:80vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+        <div style="font-family:var(--disp);font-weight:700;font-size:18px;">${name}</div>
+        <div style="font-family:var(--num);font-weight:700;font-size:18px;color:var(--go);">${Math.round(ptv.total)}</div>
+      </div>
+      <div class="note" style="margin-bottom:12px;">Each qualifying pick scored against the table as it stood entering that gameweek (before that gameweek's own result)</div>
+      <div>${rows || '<p class="note">No qualifying picks yet.</p>'}</div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn ghost" id="ptvDetailShare" style="flex:1;">Share</button>
+        <button class="btn ghost" id="ptvDetailClose" style="flex:1;">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=>document.body.removeChild(overlay);
+  overlay.querySelector('#ptvDetailClose').onclick = close;
+  overlay.querySelector('#ptvDetailShare').onclick = ()=>sharePickedTeamValueDetailImage(name, ptv);
+}
+async function sharePickedTeamValueDetailImage(name, ptv){
+  try{
+    if(!ptv.rows.length){ toast('No qualifying picks yet to share'); return; }
+    const html = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
+        <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 2px;">
+        <span style="font-size:20px;font-weight:700;color:#eaf1fb;">${name}</span>
+        <span style="font-family:ui-monospace,monospace;font-weight:700;font-size:20px;color:#19e2a0;">${Math.round(ptv.total)}</span>
+      </div>
+      <div style="font-size:12px;color:#8ea0c0;margin-bottom:12px;">Picked team value · breakdown by gameweek</div>
+      <div>${ptv.rows.map(r=>{
+        const resColor = r.result==='W' ? '#19e2a0' : r.result==='L' ? '#ff5b7e' : '#ffc043';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1c2a44;">
+          <span style="font-size:14px;color:#eaf1fb;">GW${r.gw} · ${r.team}</span>
+          <span style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:11px;color:#8ea0c0;">pos ${r.position} · <span style="color:${resColor};font-weight:700;">${r.result}</span></span>
+            <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:14px;color:#eaf1fb;width:30px;text-align:right;">${Math.round(r.value)}</span>
+          </span>
+        </div>`;
+      }).join('')}</div>
+      <div style="font-size:10.5px;color:#5e7095;margin-top:12px;">Each pick scores 21 minus the picked team's league position entering that gameweek.</div>`;
+    await exportCardAsShare(html, `kamikaze-${name.replace(/\s+/g,'-').toLowerCase()}-picked-team-value.png`, `${name}'s picked team value breakdown`);
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
 }
 async function shareSquadStrengthDetailImage(m, breakdown, historicalGw){
   try{
@@ -3370,6 +3435,9 @@ function renderHistory(){
   view.querySelectorAll('.shareRivalry').forEach(b=>{ b.onclick = ()=>shareRivalryImage(); });
   view.querySelectorAll('.shareStreaks').forEach(b=>{ b.onclick = ()=>shareStreaksImage(); });
   view.querySelectorAll('.sharePTV').forEach(b=>{ b.onclick = ()=>sharePickedTeamValueImage(); });
+  view.querySelectorAll('[data-ptv-name]').forEach(el=>{
+    el.onclick = ()=>showPickedTeamValueDetail(el.dataset.ptvName, pickedTeamValue(el.dataset.ptvName));
+  });
 }
 
 /* --- Rules --- */
