@@ -1568,7 +1568,7 @@ async function shareManagerCard(m){
     const available = state.teams
       .filter(t=>!isBanned(m,t.name))
       .map(t=>({name:t.name, left: state.maxPicksPerTeam - used(m,t.name), strength:t.strength}))
-      .sort((a,b)=>b.strength-a.strength);
+      .sort((a,b)=> a.left - b.left || a.name.localeCompare(b.name));
     const cardStatus = (label, usedFlag, result, successResult='D')=>{
       if(!usedFlag) return `<span style="font-size:11px;font-weight:700;color:#19e2a0;border:1px solid #0e7d5c;background:rgba(25,226,160,.08);border-radius:5px;padding:2px 7px;">${label} available</span>`;
       if(result===undefined || result===null) return `<span style="font-size:11px;font-weight:700;color:#8ea0c0;border:1px solid #283a5c;border-radius:5px;padding:2px 7px;">${label} used</span>`;
