@@ -329,6 +329,27 @@ function renderStats(snap){
     </div>`;
   }
 
+  // Team popularity — which teams have been picked most, and by whom
+  const history = snap.history || [];
+  const pop = (snap.teamPopularity || []).filter(t=>t.count>0);
+  const maxCount = pop.length ? pop[0].count : 1;
+  const teamCrests = snap.teamCrests || {};
+  let popHtml = '';
+  if(pop.length){
+    const popRows = pop.map(t=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer" data-team-name="${t.team.replace(/"/g,'&quot;')}">
+        ${crestBadge(t.team, teamCrests[t.team] || null)}
+        <span style="width:96px;font-size:13px;color:var(--ink);flex-shrink:0;">${t.team}</span>
+        <div style="flex:1;background:var(--panel-2);border-radius:4px;overflow:hidden;height:14px;">
+          <div style="width:${t.count/maxCount*100}%;height:100%;background:var(--go);"></div>
+        </div>
+        <span style="font-family:var(--num);font-size:12.5px;color:var(--muted);width:24px;text-align:right;flex-shrink:0;">${t.count}</span>
+      </div>`).join('');
+    popHtml = `<div class="panel"><div class="phead"><h2>Team popularity</h2>
+        <span class="hint">Picks across the season so far · tap a team to see who</span></div>
+      <div style="padding:10px 16px 14px">${popRows}</div></div>`;
+  }
+
   const apr = snap.autoPickRecord;
   let autoPickHtml = '';
   if(apr && apr.auto && apr.auto.picks){
@@ -494,6 +515,7 @@ function renderStats(snap){
     ${rivalryHtml}
     ${ptvHtml}
     ${h2hHtml}
+    ${popHtml}
     ${teamPerfHtml}
     ${contrarianHtml}
     ${cardTimingHtml}
@@ -510,6 +532,9 @@ function renderStats(snap){
   });
   view.querySelectorAll('.row.mgr[data-h2h-name]').forEach(el=>{
     el.onclick = ()=>showHeadToHeadDetail(el.dataset.h2hName);
+  });
+  view.querySelectorAll('[data-team-name]').forEach(el=>{
+    el.onclick = ()=>showTeamPickersDetail(el.dataset.teamName, computeTeamPickersFromHistory(history, el.dataset.teamName));
   });
 }
 
@@ -706,47 +731,27 @@ function renderHistoryPage(){
     }).join('');
     return `<tr><td class="num"><b>${g.gw}</b>${g.resolved?'':' <span class="note">open</span>'}</td>${cells}</tr>`;
   }).join('');
-  // who's picked a specific team, and how many times each — computed from the
-  // same locked/resolved pick history the popularity totals themselves are
-  // built from, so the two can never disagree with each other
-  function computeTeamPickersFromHistory(teamName){
-    const counts = {};
-    history.forEach(g=>{
-      if(!g.resolved) return;
-      Object.entries(g.picks||{}).forEach(([name,p])=>{
-        if(!p || p.team!==teamName) return;
-        counts[name] = (counts[name]||0)+1;
-      });
-    });
-    return Object.entries(counts).map(([name,count])=>({name,count}))
-      .sort((a,b)=> b.count-a.count || a.name.localeCompare(b.name));
-  }
-  const pop = (snap.teamPopularity || []).filter(t=>t.count>0);
-  const maxCount = pop.length ? pop[0].count : 1;
-  const teamCrests = snap.teamCrests || {};
-  const popRows = pop.map(t=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer" data-team-name="${t.team.replace(/"/g,'&quot;')}">
-      ${crestBadge(t.team, teamCrests[t.team] || null)}
-      <span style="width:96px;font-size:13px;color:var(--ink);flex-shrink:0;">${t.team}</span>
-      <div style="flex:1;background:var(--panel-2);border-radius:4px;overflow:hidden;height:14px;">
-        <div style="width:${t.count/maxCount*100}%;height:100%;background:var(--go);"></div>
-      </div>
-      <span style="font-family:var(--num);font-size:12.5px;color:var(--muted);width:24px;text-align:right;flex-shrink:0;">${t.count}</span>
-    </div>`).join('');
-  const popPanel = pop.length ? `<div class="panel"><div class="phead"><h2>Team popularity</h2>
-      <span class="hint">Picks across the season so far · tap a team to see who</span></div>
-    <div style="padding:10px 16px 14px">${popRows}</div></div>` : '';
-
   view.innerHTML = `<div class="panel"><div class="phead"><h2>Pick history</h2>
       <span class="hint">${history.length} gameweek${history.length===1?'':'s'} · scroll sideways for more managers</span></div>
     <div style="overflow-x:auto"><table class="histtable">
       <thead>${head}</thead><tbody>${rows}</tbody>
     </table></div>
-    <div class="legend">W/D/L shown once a gameweek's resolved · auto = no pick received, auto-assigned · WC/DC = card played that week.</div></div>
-    ${popPanel}`;
-  view.querySelectorAll('[data-team-name]').forEach(el=>{
-    el.onclick = ()=>showTeamPickersDetail(el.dataset.teamName, computeTeamPickersFromHistory(el.dataset.teamName));
+    <div class="legend">W/D/L shown once a gameweek's resolved · auto = no pick received, auto-assigned · WC/DC = card played that week.</div></div>`;
+}
+// who's picked a specific team, and how many times each — computed from the
+// same locked/resolved pick history the popularity totals themselves are
+// built from, so the two can never disagree with each other
+function computeTeamPickersFromHistory(history, teamName){
+  const counts = {};
+  history.forEach(g=>{
+    if(!g.resolved) return;
+    Object.entries(g.picks||{}).forEach(([name,p])=>{
+      if(!p || p.team!==teamName) return;
+      counts[name] = (counts[name]||0)+1;
+    });
   });
+  return Object.entries(counts).map(([name,count])=>({name,count}))
+    .sort((a,b)=> b.count-a.count || a.name.localeCompare(b.name));
 }
 function showTeamPickersDetail(teamName, pickers){
   const total = pickers.reduce((s,p)=>s+p.count,0);
