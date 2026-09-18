@@ -1102,12 +1102,46 @@ function showSquadStrengthDetail(m, breakdown, historicalGw){
       </div>
       <div class="note" style="margin-bottom:12px;">${historicalGw ? `Breakdown as it stood right after Gameweek ${historicalGw}` : 'Breakdown right now'} — each remaining team's value (21 minus its position), doubled if two uses are still left</div>
       <div>${rows === null ? '<p class="note">This gameweek was resolved before per-team breakdowns existed — the total above is still correct, but run "Repair past gameweeks" to see the detail here too.</p>' : (rows ? rows : '<p class="note">No teams left in reserve.</p>')}</div>
-      <button class="btn ghost" id="squadStrDetailClose" style="width:100%;margin-top:14px;">Close</button>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn ghost" id="squadStrDetailShare" style="flex:1;">Share</button>
+        <button class="btn ghost" id="squadStrDetailClose" style="flex:1;">Close</button>
+      </div>
     </div>`;
   document.body.appendChild(overlay);
   const close = ()=>document.body.removeChild(overlay);
   overlay.querySelector('#squadStrDetailClose').onclick = close;
+  overlay.querySelector('#squadStrDetailShare').onclick = ()=>shareSquadStrengthDetailImage(m, breakdown, historicalGw);
   overlay.onclick = e=>{ if(e.target===overlay) close(); };
+}
+async function shareSquadStrengthDetailImage(m, breakdown, historicalGw){
+  try{
+    if(breakdown.rows === null){ toast('No detailed breakdown for this gameweek yet — run "Repair past gameweeks" first'); return; }
+    const rows = breakdown.rows || [];
+    if(!rows.length){ toast('No teams left in reserve to share'); return; }
+    const html = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-weight:700;font-size:18px;letter-spacing:.02em;">Kamikaze Football</span>
+        <span style="font-size:12px;color:#8ea0c0;">${state.season||''}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 2px;">
+        <span style="font-size:20px;font-weight:700;color:#eaf1fb;">${m.name}</span>
+        <span style="font-family:ui-monospace,monospace;font-weight:700;font-size:20px;color:#19e2a0;">${Math.round(breakdown.total)}</span>
+      </div>
+      <div style="font-size:12px;color:#8ea0c0;margin-bottom:12px;">${historicalGw ? `Squad strength breakdown · as it stood after Gameweek ${historicalGw}` : 'Squad strength breakdown · right now'}</div>
+      <div>${rows.map(r=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1c2a44;">
+          <span style="font-size:14px;color:#eaf1fb;">${r.team}</span>
+          <span style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:11px;color:#8ea0c0;">pos ${r.position}${r.left===2?' · ×2 left':''}</span>
+            <span style="font-family:ui-monospace,monospace;font-weight:600;font-size:14px;color:#eaf1fb;width:30px;text-align:right;">${Math.round(r.value)}</span>
+          </span>
+        </div>`).join('')}</div>
+      <div style="font-size:10.5px;color:#5e7095;margin-top:12px;">Each remaining team's value (21 minus its league position), doubled if two uses are still left.</div>`;
+    await exportCardAsShare(html, `kamikaze-${m.name.replace(/\s+/g,'-').toLowerCase()}-squad-strength.png`, `${m.name}'s squad strength breakdown`);
+  }catch(e){
+    if(e && e.name === 'AbortError') return;
+    toast('Image share failed: '+e.message);
+  }
 }
 function showHeadToHeadDetail(name){
   const board = computeHeadToHeadLeaderboard();
